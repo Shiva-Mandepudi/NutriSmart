@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { useTheme } from "@/hooks/use-theme";
 import { Loader2 } from "lucide-react";
 
@@ -11,6 +10,13 @@ interface ThreeDModelProps {
   className?: string;
 }
 
+// Global storage for Three.js instances to prevent memory leaks
+const instanceStore = new Map<string, {
+  renderer?: THREE.WebGLRenderer,
+  scene?: THREE.Scene,
+  frameId?: number
+}>();
+
 export function ThreeDModel({ 
   modelType, 
   animate = true, 
@@ -19,6 +25,7 @@ export function ThreeDModel({
 }: ThreeDModelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const instanceId = useRef(`three-model-${Math.random().toString(36).substring(2, 9)}`);
   const { theme } = useTheme();
   
   // Determine size dimensions
@@ -32,19 +39,64 @@ export function ThreeDModel({
   };
   
   const { width, height } = getDimensions();
+  
+  // Clean up function to safely dispose Three.js resources
+  const cleanupThreeJS = () => {
+    const instance = instanceStore.get(instanceId.current);
+    if (!instance) return;
+    
+    // Cancel animation frame
+    if (instance.frameId) {
+      cancelAnimationFrame(instance.frameId);
+    }
+    
+    // Dispose of renderer
+    if (instance.renderer) {
+      instance.renderer.dispose();
+    }
+    
+    // Clean up scene and geometries
+    if (instance.scene) {
+      instance.scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          
+          if (object.material) {
+            // Check if material is an array
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+    }
+    
+    // Remove from store
+    instanceStore.delete(instanceId.current);
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
     
-    // Setup scene
+    // Clean up any existing instance first
+    cleanupThreeJS();
+    
+    // Create a new instance entry
+    instanceStore.set(instanceId.current, {});
+    
+    // Set up scene
     const scene = new THREE.Scene();
     scene.background = null; // Transparent background
     
-    // Setup camera
+    // Set up camera
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
     camera.position.z = 5;
     
-    // Setup renderer with transparency
+    // Set up renderer
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true,
       alpha: true 
@@ -52,28 +104,19 @@ export function ThreeDModel({
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    // Clear existing canvas and add new one
-    if (containerRef.current) {
-      // Safe way to clear children
-      while (containerRef.current.firstChild) {
-        try {
-          if (containerRef.current.contains(containerRef.current.firstChild)) {
-            containerRef.current.removeChild(containerRef.current.firstChild);
-          } else {
-            break; // If the child is no longer contained, exit the loop
-          }
-        } catch (err) {
-          console.error("Error clearing container:", err);
-          break; // Exit the loop if an error occurs
-        }
-      }
-      
-      try {
-        containerRef.current.appendChild(renderer.domElement);
-      } catch (err) {
-        console.error("Error appending renderer:", err);
-      }
+    // Store renderer and scene in instance store
+    instanceStore.set(instanceId.current, { 
+      renderer, 
+      scene 
+    });
+    
+    // Clear any existing children from the container
+    while (containerRef.current.firstChild) {
+      containerRef.current.removeChild(containerRef.current.firstChild);
     }
+    
+    // Add new renderer
+    containerRef.current.appendChild(renderer.domElement);
     
     // Add ambient light
     const ambientLight = new THREE.AmbientLight(
@@ -91,55 +134,43 @@ export function ThreeDModel({
     
     const getModelColor = () => {
       switch(modelType) {
-        case "protein": return 0x4f46e5; // Primary blue
-        case "carb": return 0x10b981; // Green
-        case "fat": return 0xfbbf24; // Yellow
-        case "water": return 0x60a5fa; // Light blue
+        case "protein": return 0x4f46e5; // Blue
+        case "carb": return 0x10b981;    // Green
+        case "fat": return 0xfbbf24;     // Yellow
+        case "water": return 0x60a5fa;   // Light blue
         case "plate":
-        default: return 0xec4899; // Pink
+        default: return 0xec4899;        // Pink
       }
     };
     
+    // Create simplified shapes for better performance
     switch (modelType) {
       case "protein":
         model = new THREE.Mesh(
-          new THREE.TorusKnotGeometry(1, 0.3, 128, 64),
-          new THREE.MeshPhongMaterial({ 
-            color: getModelColor(),
-            shininess: 100,
-            flatShading: false
-          })
+          new THREE.TorusGeometry(1, 0.3, 16, 32),
+          new THREE.MeshPhongMaterial({ color: getModelColor() })
         );
         break;
         
       case "carb":
         model = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(1, 0),
-          new THREE.MeshPhongMaterial({ 
-            color: getModelColor(),
-            shininess: 80,
-            flatShading: false
-          })
+          new THREE.BoxGeometry(1.5, 1.5, 1.5),
+          new THREE.MeshPhongMaterial({ color: getModelColor() })
         );
         break;
         
       case "fat":
         model = new THREE.Mesh(
-          new THREE.SphereGeometry(1, 32, 32),
-          new THREE.MeshPhongMaterial({ 
-            color: getModelColor(),
-            shininess: 120,
-            flatShading: false
-          })
+          new THREE.SphereGeometry(1, 16, 16),
+          new THREE.MeshPhongMaterial({ color: getModelColor() })
         );
         break;
         
       case "water":
         model = new THREE.Mesh(
-          new THREE.IcosahedronGeometry(1, 0),
+          new THREE.TetrahedronGeometry(1, 0),
           new THREE.MeshPhongMaterial({ 
             color: getModelColor(),
-            shininess: 130,
             opacity: 0.8,
             transparent: true
           })
@@ -148,20 +179,17 @@ export function ThreeDModel({
         
       case "plate":
       default:
-        const group = new THREE.Group();
+        // Create a simplified plate
+        model = new THREE.Group();
         
-        // Create plate
         const plate = new THREE.Mesh(
-          new THREE.CylinderGeometry(1.2, 1.2, 0.1, 32),
-          new THREE.MeshPhongMaterial({ 
-            color: 0xffffff, 
-            shininess: 100 
-          })
+          new THREE.CylinderGeometry(1.2, 1.2, 0.1, 16),
+          new THREE.MeshPhongMaterial({ color: 0xffffff })
         );
         
-        // Add food items on plate
+        // Add simple food items
         const food1 = new THREE.Mesh(
-          new THREE.SphereGeometry(0.3, 16, 16),
+          new THREE.SphereGeometry(0.3, 8, 8),
           new THREE.MeshPhongMaterial({ color: 0x10b981 }) // Green
         );
         food1.position.set(0.5, 0.2, 0.3);
@@ -172,82 +200,45 @@ export function ThreeDModel({
         );
         food2.position.set(-0.4, 0.2, 0.2);
         
-        const food3 = new THREE.Mesh(
-          new THREE.SphereGeometry(0.25, 16, 16),
-          new THREE.MeshPhongMaterial({ color: 0xef4444 }) // Red
-        );
-        food3.position.set(0, 0.2, -0.5);
-        
-        group.add(plate, food1, food2, food3);
-        model = group;
+        (model as THREE.Group).add(plate, food1, food2);
         break;
     }
     
     scene.add(model);
     
-    // Add OrbitControls for interaction
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enableZoom = false;
-    
     // Animation loop
-    let frameId: number;
-    
-    const animate = () => {
-      frameId = requestAnimationFrame(animate);
+    const animateScene = () => {
+      const instance = instanceStore.get(instanceId.current);
+      if (!instance || !instance.renderer || !instance.scene) return;
       
-      if (model) {
+      const frameId = requestAnimationFrame(animateScene);
+      instanceStore.set(instanceId.current, { ...instance, frameId });
+      
+      if (model && animate) {
         model.rotation.x += 0.01;
         model.rotation.y += 0.005;
       }
       
-      controls.update();
-      renderer.render(scene, camera);
+      instance.renderer.render(instance.scene, camera);
     };
     
-    animate();
+    // Start animation and update loading state
+    animateScene();
     setIsLoading(false);
     
-    // Clean up function - properly dispose of all resources
+    // Clean up on unmount
     return () => {
-      cancelAnimationFrame(frameId);
+      cleanupThreeJS();
       
-      // Stop any ongoing controls
-      controls.dispose();
-      
-      // Dispose of any geometries and materials
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          if (object.geometry) {
-            object.geometry.dispose();
+      // Extra safety: if the DOM element still exists, try to remove it
+      if (containerRef.current) {
+        const instance = instanceStore.get(instanceId.current);
+        if (instance && instance.renderer && containerRef.current.contains(instance.renderer.domElement)) {
+          try {
+            containerRef.current.removeChild(instance.renderer.domElement);
+          } catch (err) {
+            console.error("Error removing renderer on cleanup", err);
           }
-          
-          if (object.material) {
-            // Check if material is an array
-            if (Array.isArray(object.material)) {
-              object.material.forEach(material => material.dispose());
-            } else {
-              object.material.dispose();
-            }
-          }
-        }
-      });
-      
-      // Clear the scene
-      while(scene.children.length > 0) { 
-        scene.remove(scene.children[0]); 
-      }
-      
-      // Dispose of renderer
-      renderer.dispose();
-      
-      // Remove DOM element if it exists
-      if (containerRef.current && containerRef.current.contains(renderer.domElement)) {
-        try {
-          containerRef.current.removeChild(renderer.domElement);
-        } catch (err) {
-          console.error("Error removing renderer element during cleanup:", err);
         }
       }
     };
@@ -258,6 +249,7 @@ export function ThreeDModel({
       ref={containerRef}
       className={`relative ${className}`}
       style={{ width, height }}
+      data-testid="three-model-container"
     >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -266,37 +258,4 @@ export function ThreeDModel({
       )}
     </div>
   );
-}
-
-// Add a simple hook for theme detection in the 3D models context
-function use3DModelTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  
-  useEffect(() => {
-    // Check initial theme
-    const isDark = document.documentElement.classList.contains('dark');
-    setTheme(isDark ? 'dark' : 'light');
-    
-    // Watch for theme changes using MutationObserver
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (
-          mutation.attributeName === 'class' &&
-          mutation.target === document.documentElement
-        ) {
-          const isDarkMode = document.documentElement.classList.contains('dark');
-          setTheme(isDarkMode ? 'dark' : 'light');
-        }
-      });
-    });
-    
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-    
-    return () => observer.disconnect();
-  }, []);
-  
-  return { theme };
 }

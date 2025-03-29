@@ -110,11 +110,8 @@ export default function AuthPage() {
       <div className="w-full md:w-1/2 bg-gradient-to-r from-primary-600 to-secondary-600 text-white p-8 flex flex-col relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0 flex items-center justify-center">
-            {typeof window !== 'undefined' && window.innerWidth > 768 ? (
-              <ThreeDModel modelType="plate" size="lg" className="scale-150" />
-            ) : (
-              <div className="w-full h-full bg-gradient-radial from-primary-300/20 to-transparent"></div>
-            )}
+            {/* Use simple gradient background instead of 3D model for improved performance/reliability */}
+            <div className="w-full h-full bg-gradient-radial from-primary-300/20 to-transparent"></div>
           </div>
         </div>
         

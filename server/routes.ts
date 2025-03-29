@@ -40,22 +40,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
+      // Parse validation data
       const validatedData = insertMealSchema.parse(req.body);
       
-      // Convert ingredients to proper string array type if needed
-      let ingredients: string[] | null = null;
-      if (validatedData.ingredients) {
-        ingredients = Array.isArray(validatedData.ingredients) 
-          ? validatedData.ingredients.map(String) 
-          : [];
+      // Process ingredients safely
+      const ingredientsArray: string[] = [];
+      
+      // If ingredients exist and are an array, convert each to string safely
+      if (validatedData.ingredients && Array.isArray(validatedData.ingredients)) {
+        for (const item of validatedData.ingredients) {
+          if (item !== null && item !== undefined) {
+            ingredientsArray.push(String(item));
+          }
+        }
       }
       
-      // Ensure date and ingredients are properly set
+      // Create the meal with safe data
       const meal = await storage.createMeal({
         ...validatedData,
         userId,
         date: validatedData.date || new Date(),
-        ingredients
+        ingredients: ingredientsArray
       });
       
       res.status(201).json(meal);
@@ -81,21 +86,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Unauthorized to modify this meal" });
       }
       
+      // Parse validation data
       const validatedData = insertMealSchema.parse(req.body);
       
-      // Convert ingredients to proper string array type if needed
-      let ingredients: string[] | null = null;
-      if (validatedData.ingredients) {
-        ingredients = Array.isArray(validatedData.ingredients) 
-          ? validatedData.ingredients.map(String) 
-          : [];
+      // Process ingredients safely
+      const ingredientsArray: string[] = [];
+      
+      // If ingredients exist and are an array, convert each to string safely
+      if (validatedData.ingredients && Array.isArray(validatedData.ingredients)) {
+        for (const item of validatedData.ingredients) {
+          if (item !== null && item !== undefined) {
+            ingredientsArray.push(String(item));
+          }
+        }
       }
       
+      // Update meal with safe data
       const updatedMeal = await storage.updateMeal(mealId, {
         ...validatedData,
         userId,
         date: validatedData.date || new Date(),
-        ingredients
+        ingredients: ingredientsArray
       });
       
       res.json(updatedMeal);
