@@ -7,6 +7,7 @@ import {
   insertWaterIntakeSchema, 
   insertAppointmentSchema
 } from "@shared/schema";
+import { generateMealPlan, analyzeFood, answerNutritionQuestion } from "./lib/openai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication routes
@@ -40,9 +41,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const validatedData = insertMealSchema.parse(req.body);
+      
+      // Convert ingredients to proper string array type if needed
+      let ingredients: string[] | null = null;
+      if (validatedData.ingredients) {
+        ingredients = Array.isArray(validatedData.ingredients) 
+          ? validatedData.ingredients.map(String) 
+          : [];
+      }
+      
+      // Ensure date and ingredients are properly set
       const meal = await storage.createMeal({
         ...validatedData,
-        userId
+        userId,
+        date: validatedData.date || new Date(),
+        ingredients
       });
       
       res.status(201).json(meal);
@@ -69,9 +82,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const validatedData = insertMealSchema.parse(req.body);
+      
+      // Convert ingredients to proper string array type if needed
+      let ingredients: string[] | null = null;
+      if (validatedData.ingredients) {
+        ingredients = Array.isArray(validatedData.ingredients) 
+          ? validatedData.ingredients.map(String) 
+          : [];
+      }
+      
       const updatedMeal = await storage.updateMeal(mealId, {
         ...validatedData,
-        userId
+        userId,
+        date: validatedData.date || new Date(),
+        ingredients
       });
       
       res.json(updatedMeal);
@@ -133,7 +157,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertWaterIntakeSchema.parse(req.body);
       const waterEntry = await storage.addWaterIntake({
         ...validatedData,
-        userId
+        userId,
+        date: validatedData.date || new Date()
       });
       
       res.status(201).json(waterEntry);
@@ -231,7 +256,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertAppointmentSchema.parse(req.body);
       const appointment = await storage.createAppointment({
         ...validatedData,
-        userId
+        userId,
+        status: validatedData.status || "scheduled",
+        notes: validatedData.notes || null
       });
       
       res.status(201).json(appointment);
@@ -256,6 +283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
         plan: "premium",
         startDate: new Date(),
+        endDate: null, // No end date for subscription
         isActive: true
       });
       
@@ -276,6 +304,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const subscription = await storage.getSubscriptionByUserId(userId);
       res.json(subscription || { plan: "free" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // AI-powered endpoints
+  app.post("/api/ai/meal-plan", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const { dietType, allergies, dislikedFoods, goals, calorieTarget } = req.body;
+      
+      // Check if user has premium subscription for personalized meal plans
+      const isPremium = await storage.isUserPremium(userId);
+      if (!isPremium) {
+        return res.status(403).json({ 
+          message: "Premium subscription required for personalized meal plans"
+        });
+      }
+      
+      const mealPlan = await generateMealPlan({
+        dietType,
+        allergies: allergies || [],
+        dislikedFoods: dislikedFoods || [],
+        goals,
+        calorieTarget
+      });
+      
+      res.json(mealPlan);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  app.post("/api/ai/analyze-food", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { foodDescription } = req.body;
+      if (!foodDescription) {
+        return res.status(400).json({ message: "Food description is required" });
+      }
+      
+      const analysis = await analyzeFood(foodDescription);
+      res.json(analysis);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  app.post("/api/ai/chat", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { question } = req.body;
+      if (!question) {
+        return res.status(400).json({ message: "Question is required" });
+      }
+      
+      const answer = await answerNutritionQuestion(question);
+      res.json({ answer });
     } catch (error) {
       next(error);
     }
