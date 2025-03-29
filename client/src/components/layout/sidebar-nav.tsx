@@ -95,25 +95,23 @@ export function SidebarNav() {
                 : location.startsWith(item.href);
                 
             return (
-              <Link key={item.name} href={item.href}>
-                <a
+              <Link key={item.name} href={item.href} 
+                className={cn(
+                  "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                  isActive
+                    ? "bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"
+                    : "text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                )}
+              >
+                <item.icon
                   className={cn(
-                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    "mr-3 h-5 w-5 flex-shrink-0 transition-colors",
                     isActive
-                      ? "bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"
-                      : "text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                      ? "text-primary-500 dark:text-primary-400"
+                      : "text-gray-400 group-hover:text-gray-500 dark:text-gray-400 dark:group-hover:text-gray-300"
                   )}
-                >
-                  <item.icon
-                    className={cn(
-                      "mr-3 h-5 w-5 flex-shrink-0 transition-colors",
-                      isActive
-                        ? "text-primary-500 dark:text-primary-400"
-                        : "text-gray-400 group-hover:text-gray-500 dark:text-gray-400 dark:group-hover:text-gray-300"
-                    )}
-                  />
-                  {item.name}
-                </a>
+                />
+                {item.name}
               </Link>
             );
           })}
