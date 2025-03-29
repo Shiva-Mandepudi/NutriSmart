@@ -41,7 +41,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Parse validation data
-      const validatedData = insertMealSchema.parse(req.body);
+      const validatedData = insertMealSchema.parse({
+        ...req.body,
+        calories: Number(req.body.calories),
+        userId
+      });
       
       // Process ingredients safely
       const ingredientsArray: string[] = [];
@@ -59,12 +63,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const meal = await storage.createMeal({
         ...validatedData,
         userId,
-        date: validatedData.date || new Date(),
+        date: validatedData.date ? new Date(validatedData.date) : new Date(),
         ingredients: ingredientsArray
       });
       
       res.status(201).json(meal);
     } catch (error) {
+      console.error('Error creating meal:', error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid meal data", errors: (error as any).errors });
+      }
       next(error);
     }
   });

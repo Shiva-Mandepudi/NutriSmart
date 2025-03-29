@@ -8,10 +8,15 @@ import {
   appointments, type Appointment,
   subscriptions, type Subscription
 } from "@shared/schema";
-import session from "express-session";
+import { eq, and } from "drizzle-orm";
+import { db } from './db';
+import { pool } from './db';
+import connectPg from "connect-pg-simple";
 import createMemoryStore from "memorystore";
+import session from "express-session";
 
 const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // User methods
@@ -55,7 +60,7 @@ export interface IStorage {
   isUserPremium(userId: number | undefined): Promise<boolean>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: any;
 }
 
 export class MemStorage implements IStorage {
@@ -68,7 +73,7 @@ export class MemStorage implements IStorage {
   private appointmentsStore: Map<number, Appointment>;
   private subscriptionsStore: Map<number, Subscription>;
   
-  sessionStore: session.SessionStore;
+  sessionStore: any;
   currentId: { [key: string]: number };
 
   constructor() {
@@ -181,7 +186,13 @@ export class MemStorage implements IStorage {
 
   async createMeal(meal: Omit<Meal, "id">): Promise<Meal> {
     const id = this.currentId.meals++;
-    const newMeal = { ...meal, id };
+    const newMeal = { 
+      ...meal, 
+      id,
+      date: meal.date ? new Date(meal.date) : new Date(),
+      calories: Number(meal.calories),
+      ingredients: Array.isArray(meal.ingredients) ? meal.ingredients : []
+    };
     this.mealsStore.set(id, newMeal);
     return newMeal;
   }
@@ -288,7 +299,7 @@ export class MemStorage implements IStorage {
     if (!userId) return false;
     
     const subscription = await this.getSubscriptionByUserId(userId);
-    return subscription?.isActive && subscription?.plan === "premium";
+    return Boolean(subscription?.isActive && subscription?.plan === "premium");
   }
 
   // Initialize sample data for testing and demo purposes
@@ -477,4 +488,436 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  sessionStore: any;
+
+  constructor() {
+    // Create a session store that will create the session table
+    this.sessionStore = new PostgresSessionStore({ 
+      pool: pool,
+      tableName: 'session',
+      createTableIfMissing: true,
+      schemaName: 'public',
+      pruneSessionInterval: 60 // Clean up session table every 60 seconds
+    });
+    
+    this.initSampleData();
+  }
+
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    // We'll explicitly cast it to avoid TypeScript errors
+    // This is safe because the schema validation happens before this function is called
+    const [user] = await db.insert(users).values(insertUser as any).returning();
+    return user;
+  }
+
+  async updateUser(id: number, userData: Partial<User>): Promise<User> {
+    const [updatedUser] = await db.update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
+    
+    if (!updatedUser) {
+      throw new Error("User not found");
+    }
+    
+    return updatedUser;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Delete related records first - using transactions would be better
+    await db.delete(meals).where(eq(meals.userId, id));
+    await db.delete(waterIntake).where(eq(waterIntake.userId, id));
+    await db.delete(appointments).where(eq(appointments.userId, id));
+    await db.delete(subscriptions).where(eq(subscriptions.userId, id));
+    
+    // Finally delete the user
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  // Meal methods
+  async getMealsByUserId(userId: number): Promise<Meal[]> {
+    return db.select()
+      .from(meals)
+      .where(eq(meals.userId, userId))
+      .orderBy(meals.date);
+  }
+
+  async getMealById(id: number): Promise<Meal | undefined> {
+    const [meal] = await db.select().from(meals).where(eq(meals.id, id));
+    return meal;
+  }
+
+  async createMeal(meal: Omit<Meal, "id">): Promise<Meal> {
+    const preparedMeal = {
+      ...meal,
+      date: meal.date ? new Date(meal.date) : new Date(),
+      calories: Number(meal.calories),
+      ingredients: Array.isArray(meal.ingredients) ? meal.ingredients : []
+    };
+    
+    const [newMeal] = await db.insert(meals).values(preparedMeal).returning();
+    return newMeal;
+  }
+
+  async updateMeal(id: number, mealData: Omit<Meal, "id">): Promise<Meal> {
+    const [existingMeal] = await db.select().from(meals).where(eq(meals.id, id));
+    
+    if (!existingMeal) {
+      throw new Error("Meal not found");
+    }
+    
+    const [updatedMeal] = await db.update(meals)
+      .set(mealData)
+      .where(eq(meals.id, id))
+      .returning();
+    
+    return updatedMeal;
+  }
+
+  async deleteMeal(id: number): Promise<void> {
+    const [meal] = await db.select().from(meals).where(eq(meals.id, id));
+    
+    if (!meal) {
+      throw new Error("Meal not found");
+    }
+    
+    await db.delete(meals).where(eq(meals.id, id));
+  }
+
+  // Water intake methods
+  async getWaterIntakeByUserId(userId: number): Promise<WaterIntake[]> {
+    return db.select()
+      .from(waterIntake)
+      .where(eq(waterIntake.userId, userId))
+      .orderBy(waterIntake.date);
+  }
+
+  async addWaterIntake(waterIntakeData: Omit<WaterIntake, "id">): Promise<WaterIntake> {
+    const [entry] = await db.insert(waterIntake).values(waterIntakeData).returning();
+    return entry;
+  }
+
+  // Meal plan methods
+  async getAllMealPlans(): Promise<MealPlan[]> {
+    return db.select().from(mealPlans);
+  }
+
+  async getMealPlanById(id: number): Promise<MealPlan | undefined> {
+    const [plan] = await db.select().from(mealPlans).where(eq(mealPlans.id, id));
+    return plan;
+  }
+
+  // Product methods
+  async getAllProducts(): Promise<Product[]> {
+    return db.select().from(products);
+  }
+
+  async getProductById(id: number): Promise<Product | undefined> {
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product;
+  }
+
+  // Blog methods
+  async getAllBlogPosts(): Promise<BlogPost[]> {
+    return db.select().from(blogPosts).orderBy(blogPosts.publishDate);
+  }
+
+  async getBlogPostById(id: number): Promise<BlogPost | undefined> {
+    const [post] = await db.select().from(blogPosts).where(eq(blogPosts.id, id));
+    return post;
+  }
+
+  // Appointment methods
+  async getAppointmentsByUserId(userId: number): Promise<Appointment[]> {
+    return db.select()
+      .from(appointments)
+      .where(eq(appointments.userId, userId))
+      .orderBy(appointments.date);
+  }
+
+  async createAppointment(appointmentData: Omit<Appointment, "id">): Promise<Appointment> {
+    const [appointment] = await db.insert(appointments).values(appointmentData).returning();
+    return appointment;
+  }
+
+  // Subscription methods
+  async getSubscriptionByUserId(userId: number): Promise<Subscription | undefined> {
+    const [subscription] = await db.select()
+      .from(subscriptions)
+      .where(and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.isActive, true)
+      ));
+    
+    return subscription;
+  }
+
+  async createSubscription(subscriptionData: Omit<Subscription, "id">): Promise<Subscription> {
+    // Check if user already has an active subscription
+    const existingSubscription = await this.getSubscriptionByUserId(subscriptionData.userId);
+    
+    if (existingSubscription) {
+      // Update existing subscription
+      const [updatedSubscription] = await db.update(subscriptions)
+        .set(subscriptionData)
+        .where(eq(subscriptions.id, existingSubscription.id))
+        .returning();
+      
+      return updatedSubscription;
+    }
+    
+    // Create new subscription
+    const [newSubscription] = await db.insert(subscriptions).values(subscriptionData).returning();
+    return newSubscription;
+  }
+
+  async isUserPremium(userId: number | undefined): Promise<boolean> {
+    if (!userId) return false;
+    
+    const subscription = await this.getSubscriptionByUserId(userId);
+    return Boolean(subscription?.isActive && subscription?.plan === "premium");
+  }
+  
+  // Initialize sample data
+  private async initSampleData() {
+    try {
+      // Check if we have meal plans
+      const existingPlans = await db.select().from(mealPlans);
+      
+      // Only insert sample data if tables are empty
+      if (existingPlans.length === 0) {
+        // Insert sample meal plans
+        await db.insert(mealPlans).values([
+          {
+            id: 1,
+            name: "Balanced Nutrition Plan",
+            description: "Perfect macro balance for general health and fitness goals.",
+            imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&q=80",
+            dietType: "balanced",
+            calorieRange: "1,800-2,200 kcal",
+            isPremium: false,
+            content: {
+              days: [
+                {
+                  day: 1,
+                  meals: [
+                    {
+                      type: "breakfast",
+                      name: "Greek Yogurt with Berries",
+                      calories: 320,
+                      protein: 18,
+                      carbs: 24,
+                      fats: 12,
+                      recipe: "Mix 1 cup Greek yogurt with 1/2 cup berries and 1 tbsp honey."
+                    },
+                    {
+                      type: "lunch",
+                      name: "Grilled Chicken Salad",
+                      calories: 520,
+                      protein: 35,
+                      carbs: 30,
+                      fats: 20,
+                      recipe: "Grill 4oz chicken breast and serve over mixed greens with cherry tomatoes, cucumber, and olive oil dressing."
+                    },
+                    {
+                      type: "dinner",
+                      name: "Baked Salmon with Roasted Vegetables",
+                      calories: 580,
+                      protein: 40,
+                      carbs: 25,
+                      fats: 30,
+                      recipe: "Bake 6oz salmon fillet and serve with roasted brussels sprouts and sweet potatoes."
+                    },
+                    {
+                      type: "snack",
+                      name: "Apple & Almond Butter",
+                      calories: 180,
+                      protein: 5,
+                      carbs: 20,
+                      fats: 9,
+                      recipe: "Slice 1 medium apple and serve with 1 tbsp almond butter."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            id: 2,
+            name: "Keto Weight Loss Plan",
+            description: "Low-carb, high-fat meals to promote ketosis and fat burning.",
+            imageUrl: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&q=80",
+            dietType: "keto",
+            calorieRange: "1,600-1,800 kcal",
+            isPremium: false,
+            content: {
+              days: [
+                {
+                  day: 1,
+                  meals: [
+                    {
+                      type: "breakfast",
+                      name: "Avocado and Bacon Eggs",
+                      calories: 450,
+                      protein: 22,
+                      carbs: 5,
+                      fats: 38,
+                      recipe: "Cook 2 eggs with 2 slices bacon and 1/2 avocado."
+                    },
+                    {
+                      type: "lunch",
+                      name: "Spinach and Feta Stuffed Chicken",
+                      calories: 520,
+                      protein: 40,
+                      carbs: 6,
+                      fats: 35,
+                      recipe: "Stuff chicken breast with spinach and feta, bake until cooked through."
+                    },
+                    {
+                      type: "dinner",
+                      name: "Zucchini Noodles with Meatballs",
+                      calories: 480,
+                      protein: 30,
+                      carbs: 10,
+                      fats: 32,
+                      recipe: "Serve beef meatballs over spiralized zucchini with olive oil and parmesan."
+                    },
+                    {
+                      type: "snack",
+                      name: "Cheese and Nuts",
+                      calories: 200,
+                      protein: 10,
+                      carbs: 4,
+                      fats: 16,
+                      recipe: "1oz cheese with 1/4 cup mixed nuts."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            id: 3,
+            name: "Plant-Based Power Plan",
+            description: "Vegetarian meals rich in plant protein and essential nutrients.",
+            imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&q=80",
+            dietType: "vegetarian",
+            calorieRange: "2,000-2,400 kcal",
+            isPremium: true,
+            content: null
+          }
+        ]);
+
+        // Insert sample blog posts
+        await db.insert(blogPosts).values([
+          {
+            id: 1,
+            title: "The Science Behind Intermittent Fasting",
+            content: "Intermittent fasting has gained popularity in recent years as a weight management strategy...",
+            imageUrl: "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Nutrition",
+            publishDate: new Date("2023-05-10")
+          },
+          {
+            id: 2,
+            title: "10 Superfoods to Boost Your Immune System",
+            content: "Maintaining a strong immune system is essential for overall health and wellbeing...",
+            imageUrl: "https://images.unsplash.com/photo-1490645935967-10de6ba17061?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Nutrition",
+            publishDate: new Date("2023-05-05")
+          },
+          {
+            id: 3,
+            title: "How to Create Sustainable Eating Habits",
+            content: "Creating sustainable eating habits is not just about following a strict diet...",
+            imageUrl: "https://images.unsplash.com/photo-1498837167922-ddd27525d352?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Lifestyle",
+            publishDate: new Date("2023-04-28")
+          }
+        ]);
+
+        // Insert sample products
+        await db.insert(products).values([
+          {
+            id: 1,
+            name: "NutriBlend Protein Powder",
+            description: "Premium plant-based protein powder with 25g protein per serving.",
+            price: 3999, // $39.99
+            imageUrl: "https://images.unsplash.com/photo-1612549225463-7152e164dbd1?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Supplements"
+          },
+          {
+            id: 2,
+            name: "Smart Water Bottle",
+            description: "Tracks your water intake and reminds you to stay hydrated throughout the day.",
+            price: 2499, // $24.99
+            imageUrl: "https://images.unsplash.com/photo-1606498248051-cca8230df295?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1035&q=80",
+            category: "Accessories"
+          },
+          {
+            id: 3,
+            name: "Digital Food Scale",
+            description: "Precise measurements for portion control and recipe accuracy.",
+            price: 1999, // $19.99
+            imageUrl: "https://images.unsplash.com/photo-1607522370275-f14206abe5d3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1121&q=80",
+            category: "Kitchen"
+          },
+          {
+            id: 4,
+            name: "Meal Prep Containers",
+            description: "Set of 7 portion-controlled containers for weekly meal prep.",
+            price: 1499, // $14.99
+            imageUrl: "https://images.unsplash.com/photo-1623241899284-e04002d47ca2?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Kitchen"
+          },
+          {
+            id: 5,
+            name: "Nutritionist Consultation",
+            description: "30-minute personalized video consultation with a certified nutritionist.",
+            price: 9999, // $99.99
+            imageUrl: "https://images.unsplash.com/photo-1590650153855-d9e808231d41?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+            category: "Services"
+          },
+          {
+            id: 6,
+            name: "Multivitamin Complex",
+            description: "Complete daily vitamin and mineral supplement for optimal nutrition.",
+            price: 2799, // $27.99
+            imageUrl: "https://images.unsplash.com/photo-1584468313484-398862a34fa2?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1064&q=80",
+            category: "Supplements"
+          }
+        ]);
+      }
+      
+      console.log("Sample data initialized successfully");
+    } catch (error) {
+      console.error("Error initializing sample data:", error);
+    }
+  }
+}
+
+// Use database storage
+export const storage = new DatabaseStorage();
