@@ -35,7 +35,7 @@ import {
   Dumbbell,
   Beef,
   Wheat,
-  Oil
+  Droplets
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ThreeDModel } from "@/components/ui/3d-food-model";
@@ -386,7 +386,7 @@ export function MacroCalculator() {
                 onClick={() => setActiveMacro("fat")}
               >
                 <div className="flex items-center justify-center mb-2">
-                  <Oil className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+                  <Droplets className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <h4 className="text-sm text-yellow-800 dark:text-yellow-300 mb-1">Fats</h4>
                 <p className="text-xl font-bold text-yellow-600 dark:text-yellow-400">{result.fats.grams}g</p>

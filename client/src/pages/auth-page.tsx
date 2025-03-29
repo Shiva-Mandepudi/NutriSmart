@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertUserSchema, loginUserSchema, InsertUser, LoginUser } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { useWindowSize } from "@/hooks/use-window-size";
 import { z } from "zod";
 import { Redirect } from "wouter";
 import {
@@ -29,10 +30,25 @@ export default function AuthPage() {
     rememberMe: z.boolean().default(false).optional(),
   });
   
-  const extendedRegisterSchema = insertUserSchema.extend({
+  // Create a register schema that includes all fields from insertUserSchema plus agreeTos
+  const extendedRegisterSchema = z.object({
+    username: z.string().min(1, "Username is required"),
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    profilePicture: z.string().optional(),
+    calorieGoal: z.number().optional().default(2000),
+    weightKg: z.number().optional(),
+    heightCm: z.number().optional(),
+    dietaryPreferences: z.any().optional(),
     agreeTos: z.boolean().refine(val => val, {
       message: "You must agree to the terms of service",
     }),
+  }).refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
   });
   
   // Login form
@@ -65,7 +81,21 @@ export default function AuthPage() {
   
   // Handle register form submission
   function onRegisterSubmit(values: z.infer<typeof extendedRegisterSchema>) {
-    const { agreeTos, ...registerData } = values;
+    // Extract only the fields needed for registration (matching InsertUser type)
+    const registerData = {
+      username: values.username,
+      email: values.email,
+      password: values.password,
+      confirmPassword: values.confirmPassword,
+      firstName: values.firstName,
+      lastName: values.lastName,
+      profilePicture: values.profilePicture,
+      calorieGoal: values.calorieGoal,
+      weightKg: values.weightKg,
+      heightCm: values.heightCm,
+      dietaryPreferences: values.dietaryPreferences
+    };
+    
     registerMutation.mutate(registerData);
   }
   
@@ -80,7 +110,11 @@ export default function AuthPage() {
       <div className="w-full md:w-1/2 bg-gradient-to-r from-primary-600 to-secondary-600 text-white p-8 flex flex-col relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0 flex items-center justify-center">
-            <ThreeDModel modelType="plate" size="lg" className="scale-150" />
+            {typeof window !== 'undefined' && window.innerWidth > 768 ? (
+              <ThreeDModel modelType="plate" size="lg" className="scale-150" />
+            ) : (
+              <div className="w-full h-full bg-gradient-radial from-primary-300/20 to-transparent"></div>
+            )}
           </div>
         </div>
         

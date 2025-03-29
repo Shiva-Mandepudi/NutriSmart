@@ -52,12 +52,28 @@ export function ThreeDModel({
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    // Clear existing canvas
-    if (containerRef.current.firstChild) {
-      containerRef.current.removeChild(containerRef.current.firstChild);
+    // Clear existing canvas and add new one
+    if (containerRef.current) {
+      // Safe way to clear children
+      while (containerRef.current.firstChild) {
+        try {
+          if (containerRef.current.contains(containerRef.current.firstChild)) {
+            containerRef.current.removeChild(containerRef.current.firstChild);
+          } else {
+            break; // If the child is no longer contained, exit the loop
+          }
+        } catch (err) {
+          console.error("Error clearing container:", err);
+          break; // Exit the loop if an error occurs
+        }
+      }
+      
+      try {
+        containerRef.current.appendChild(renderer.domElement);
+      } catch (err) {
+        console.error("Error appending renderer:", err);
+      }
     }
-    
-    containerRef.current.appendChild(renderer.domElement);
     
     // Add ambient light
     const ambientLight = new THREE.AmbientLight(
@@ -71,7 +87,7 @@ export function ThreeDModel({
     scene.add(directionalLight);
     
     // Create model based on type
-    let model: THREE.Mesh;
+    let model: THREE.Object3D;
     
     const getModelColor = () => {
       switch(modelType) {
@@ -181,7 +197,7 @@ export function ThreeDModel({
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
-      if (animate) {
+      if (model) {
         model.rotation.x += 0.01;
         model.rotation.y += 0.005;
       }
@@ -193,9 +209,47 @@ export function ThreeDModel({
     animate();
     setIsLoading(false);
     
+    // Clean up function - properly dispose of all resources
     return () => {
       cancelAnimationFrame(frameId);
+      
+      // Stop any ongoing controls
+      controls.dispose();
+      
+      // Dispose of any geometries and materials
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          
+          if (object.material) {
+            // Check if material is an array
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+      
+      // Clear the scene
+      while(scene.children.length > 0) { 
+        scene.remove(scene.children[0]); 
+      }
+      
+      // Dispose of renderer
       renderer.dispose();
+      
+      // Remove DOM element if it exists
+      if (containerRef.current && containerRef.current.contains(renderer.domElement)) {
+        try {
+          containerRef.current.removeChild(renderer.domElement);
+        } catch (err) {
+          console.error("Error removing renderer element during cleanup:", err);
+        }
+      }
     };
   }, [modelType, animate, theme, width, height]);
 

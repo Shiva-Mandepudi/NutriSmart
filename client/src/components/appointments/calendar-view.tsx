@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format, isSameDay, isBefore, isToday } from "date-fns";
+import { SelectSingleEventHandler } from "react-day-picker";
 
 interface CalendarViewProps {
   selectedDate?: Date;
@@ -13,7 +14,7 @@ export function CalendarView({ selectedDate, onDateSelect, bookedDates = [] }: C
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState<Date>(today);
   
-  const isDayBooked = (date: Date) => {
+  const isDayBooked = (date: Date): boolean => {
     return bookedDates.some(bookedDate => isSameDay(date, bookedDate));
   };
   
@@ -24,15 +25,22 @@ export function CalendarView({ selectedDate, onDateSelect, bookedDates = [] }: C
     }
   }, [selectedDate]);
 
+  // Handler for calendar date selection
+  const handleDateSelect: SelectSingleEventHandler = (day) => {
+    if (day) {
+      onDateSelect(day);
+    }
+  };
+
   return (
     <div className="p-3 border rounded-lg">
       <Calendar
         mode="single"
         selected={selectedDate}
-        onSelect={onDateSelect}
+        onSelect={handleDateSelect}
         month={currentMonth}
         onMonthChange={setCurrentMonth}
-        disabled={date => isBefore(date, today) && !isToday(date)}
+        disabled={(date: Date) => isBefore(date, today) && !isToday(date)}
         className="w-full"
         modifiers={{
           booked: (date) => isDayBooked(date)
@@ -40,11 +48,8 @@ export function CalendarView({ selectedDate, onDateSelect, bookedDates = [] }: C
         modifiersClassNames={{
           booked: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 hover:text-blue-900"
         }}
-        dayClassName={(date) => {
-          return cn(
-            isDayBooked(date) && !selectedDate?.getTime() === date.getTime() && "relative",
-            isToday(date) && !selectedDate?.getTime() === date.getTime() && "border border-primary text-primary"
-          );
+        classNames={{
+          day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100"
         }}
       />
       

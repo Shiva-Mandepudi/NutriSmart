@@ -13,7 +13,7 @@ import {
   Minimize2
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { useMutation } from '@tanstack/react-query';
+import { useAI } from '@/hooks/use-ai';
 import { cn } from '@/lib/utils';
 
 interface Message {
@@ -23,30 +23,7 @@ interface Message {
   timestamp: Date;
 }
 
-// Example nutrition information for the bot to use
-const NUTRITION_FACTS = {
-  apple: {
-    calories: 95,
-    carbs: 25,
-    protein: 0.5,
-    fat: 0.3,
-    fiber: 4.4
-  },
-  banana: {
-    calories: 105,
-    carbs: 27,
-    protein: 1.3,
-    fat: 0.4,
-    fiber: 3.1
-  },
-  chicken: {
-    calories: 165,
-    carbs: 0,
-    protein: 31,
-    fat: 3.6,
-    fiber: 0
-  }
-};
+// We'll use OpenAI for all nutrition information now
 
 export function AIChatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -63,42 +40,8 @@ export function AIChatbot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   
-  // Simulate AI response
-  const generateResponse = useMutation({
-    mutationFn: async (userMessage: string) => {
-      // This would normally call an API endpoint
-      // Simulating network delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const normalizedMessage = userMessage.toLowerCase();
-      
-      // Simple pattern matching for demo purposes
-      if (normalizedMessage.includes('hello') || normalizedMessage.includes('hi')) {
-        return `Hello${user?.firstName ? ' ' + user.firstName : ''}! How can I assist with your nutrition questions today?`;
-      }
-      
-      if (normalizedMessage.includes('calorie') && normalizedMessage.includes('need')) {
-        return `Based on average recommendations, most adults need between 1,600-3,000 calories daily depending on their age, gender, weight, height, and activity level. For a precise calculation, try our Calorie Calculator in the Tools section!`;
-      }
-      
-      if (normalizedMessage.includes('keto')) {
-        return 'The ketogenic diet is a very low-carb, high-fat diet that shares similarities with Atkins. It involves drastically reducing carbohydrate intake and replacing it with fat, putting your body into a metabolic state called ketosis.';
-      }
-      
-      if (normalizedMessage.includes('protein') && normalizedMessage.includes('how much')) {
-        return 'The Recommended Dietary Allowance for protein is 0.8 grams per kilogram of body weight. Athletes and active individuals may need 1.2-2.0 g/kg. For muscle building, aim for 1.6-2.2 g/kg.';
-      }
-      
-      // Check if user is asking about a specific food
-      for (const [food, nutrients] of Object.entries(NUTRITION_FACTS)) {
-        if (normalizedMessage.includes(food)) {
-          return `A medium ${food} contains approximately ${nutrients.calories} calories, ${nutrients.carbs}g carbs, ${nutrients.protein}g protein, and ${nutrients.fat}g fat. It also provides ${nutrients.fiber}g of fiber.`;
-        }
-      }
-      
-      return `Thank you for your question! I'm continuously learning about nutrition. If you need specific information, try asking about calories, macronutrients, or specific diets like keto or Mediterranean.`;
-    }
-  });
+  // Use the OpenAI-powered nutrition assistant
+  const { askNutritionQuestionMutation } = useAI();
   
   const handleSendMessage = async () => {
     if (!input.trim()) return;
@@ -113,8 +56,8 @@ export function AIChatbot() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     
-    // Generate AI response
-    generateResponse.mutate(input, {
+    // Generate AI response using OpenAI
+    askNutritionQuestionMutation.mutate(input, {
       onSuccess: (response) => {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -246,7 +189,7 @@ export function AIChatbot() {
                   </div>
                 </div>
               ))}
-              {generateResponse.isPending && (
+              {askNutritionQuestionMutation.isPending && (
                 <div className="flex justify-start">
                   <div className="flex items-start gap-2 max-w-[80%]">
                     <Avatar className="h-8 w-8">
@@ -275,7 +218,7 @@ export function AIChatbot() {
               <Button 
                 onClick={handleSendMessage} 
                 size="icon" 
-                disabled={!input.trim() || generateResponse.isPending}
+                disabled={!input.trim() || askNutritionQuestionMutation.isPending}
               >
                 <Send className="h-4 w-4" />
               </Button>
