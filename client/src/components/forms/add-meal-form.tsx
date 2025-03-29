@@ -54,15 +54,14 @@ export function AddMealForm({ onSuccess, defaultMealType }: AddMealFormProps) {
       carbs: 0,
       fats: 0,
       ingredients: [],
-      date: new Date().toISOString(),
+      date: new Date(),
     },
   });
 
   const addMealMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof addMealSchema>) => {
-      // Add the ingredients to the form data
-      const mealData = { ...values, ingredients };
-      const res = await apiRequest("POST", "/api/meals", mealData);
+    mutationFn: async (values: z.infer<typeof addMealSchema> & { ingredients: string[] }) => {
+      // Send the form data with ingredients
+      const res = await apiRequest("POST", "/api/meals", values);
       return await res.json();
     },
     onSuccess: () => {
@@ -71,6 +70,9 @@ export function AddMealForm({ onSuccess, defaultMealType }: AddMealFormProps) {
         title: "Meal added successfully",
         description: "Your meal has been logged.",
       });
+      // Reset form after successful submission
+      form.reset();
+      setIngredients([]);
       if (onSuccess) onSuccess();
     },
     onError: (error: Error) => {
@@ -83,7 +85,11 @@ export function AddMealForm({ onSuccess, defaultMealType }: AddMealFormProps) {
   });
 
   function onSubmit(values: z.infer<typeof addMealSchema>) {
-    addMealMutation.mutate(values);
+    // Add the ingredients array to the form values before submission
+    addMealMutation.mutate({
+      ...values,
+      ingredients
+    });
   }
 
   const handleAddIngredient = () => {
@@ -195,6 +201,27 @@ export function AddMealForm({ onSuccess, defaultMealType }: AddMealFormProps) {
             )}
           />
         </div>
+        
+        <FormField
+          control={form.control}
+          name="date"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Date</FormLabel>
+              <FormControl>
+                <Input 
+                  type="datetime-local" 
+                  {...field}
+                  value={field.value instanceof Date ? field.value.toISOString().slice(0, 16) : ''}
+                  onChange={(e) => {
+                    field.onChange(e.target.value ? new Date(e.target.value) : new Date());
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <div>
           <FormLabel>Ingredients</FormLabel>

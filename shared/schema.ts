@@ -130,7 +130,12 @@ export const loginUserSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export const insertMealSchema = createInsertSchema(meals).omit({ id: true, userId: true });
+// Create insert schema with enhanced date handling
+export const insertMealSchema = createInsertSchema(meals).omit({ id: true, userId: true })
+  .extend({
+    // Accept both Date objects and ISO strings for date
+    date: z.union([z.date(), z.string().datetime()]).optional()
+  });
 export const insertWaterIntakeSchema = createInsertSchema(waterIntake).omit({ id: true, userId: true });
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, userId: true });
 
