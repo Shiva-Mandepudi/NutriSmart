@@ -111,6 +111,13 @@ export function MobileNav() {
   return (
     <>
       <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+        <SheetTrigger asChild className="md:hidden">
+          <button className="flex flex-col items-center p-2 text-gray-500 dark:text-gray-400">
+            <Menu className="w-6 h-6" />
+            <span className="text-xs mt-1">Menu</span>
+          </button>
+        </SheetTrigger>
+        
         <SheetContent side="left" className="w-[300px] sm:w-[400px]">
           <div className="py-4">
             <div className="flex items-center mb-6">
@@ -150,12 +157,9 @@ export function MobileNav() {
       
       <nav className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 py-2 md:hidden">
         <div className="flex justify-around items-center">
-          <SheetTrigger asChild>
-            <button className="flex flex-col items-center p-2 text-gray-500 dark:text-gray-400">
-              <Menu className="w-6 h-6" />
-              <span className="text-xs mt-1">Menu</span>
-            </button>
-          </SheetTrigger>
+          <div className="sheet-trigger-container">
+            {/* Sheet trigger is used here by the Sheet component */}
+          </div>
           
           {mainNavItems.slice(0, 2).map((item) => (
             <NavItem 
@@ -196,14 +200,12 @@ function NavItem({
   isActive: boolean 
 }) {
   return (
-    <Link href={href}>
-      <a className={cn(
-        "flex flex-col items-center p-2",
-        isActive ? "text-primary-500" : "text-gray-500 dark:text-gray-400"
-      )}>
-        {icon}
-        <span className="text-xs mt-1">{label}</span>
-      </a>
+    <Link href={href} className={cn(
+      "flex flex-col items-center p-2",
+      isActive ? "text-primary-500" : "text-gray-500 dark:text-gray-400"
+    )}>
+      {icon}
+      <span className="text-xs mt-1">{label}</span>
     </Link>
   );
 }
@@ -211,10 +213,8 @@ function NavItem({
 function AddMealButton() {
   return (
     <div className="flex flex-col items-center p-2">
-      <Link href="/add-meal">
-        <a className="w-12 h-12 rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 flex items-center justify-center -mt-5 shadow-lg">
-          <Plus className="w-6 h-6 text-white" />
-        </a>
+      <Link href="/add-meal" className="w-12 h-12 rounded-full bg-gradient-to-r from-primary-500 to-secondary-500 flex items-center justify-center -mt-5 shadow-lg">
+        <Plus className="w-6 h-6 text-white" />
       </Link>
     </div>
   );
