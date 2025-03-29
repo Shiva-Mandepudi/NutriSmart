@@ -70,8 +70,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(meal);
     } catch (error) {
       console.error('Error creating meal:', error);
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ message: "Invalid meal data", errors: error.errors });
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid meal data", errors: (error as any).errors });
       }
       next(error);
     }
