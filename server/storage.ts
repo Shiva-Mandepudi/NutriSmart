@@ -181,7 +181,13 @@ export class MemStorage implements IStorage {
 
   async createMeal(meal: Omit<Meal, "id">): Promise<Meal> {
     const id = this.currentId.meals++;
-    const newMeal = { ...meal, id };
+    const newMeal = { 
+      ...meal, 
+      id,
+      date: meal.date ? new Date(meal.date) : new Date(),
+      calories: Number(meal.calories),
+      ingredients: Array.isArray(meal.ingredients) ? meal.ingredients : []
+    };
     this.mealsStore.set(id, newMeal);
     return newMeal;
   }
