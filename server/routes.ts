@@ -40,30 +40,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
-      // Parse validation data
+      // Parse validation data - without including userId in the validation
       const validatedData = insertMealSchema.parse({
         ...req.body,
         calories: Number(req.body.calories),
-        userId
+        protein: Number(req.body.protein),
+        carbs: Number(req.body.carbs), 
+        fats: Number(req.body.fats)
       });
       
       // Process ingredients safely
-      const ingredientsArray: string[] = [];
+      let ingredientsArray: string[] = [];
       
       // If ingredients exist and are an array, convert each to string safely
-      if (validatedData.ingredients && Array.isArray(validatedData.ingredients)) {
-        for (const item of validatedData.ingredients) {
-          if (item !== null && item !== undefined) {
-            ingredientsArray.push(String(item));
-          }
-        }
+      if (req.body.ingredients && Array.isArray(req.body.ingredients)) {
+        ingredientsArray = req.body.ingredients
+          .filter((item: any) => item !== null && item !== undefined)
+          .map((item: any) => String(item));
       }
       
       // Create the meal with safe data
       const meal = await storage.createMeal({
         ...validatedData,
         userId,
-        date: validatedData.date ? new Date(validatedData.date) : new Date(),
+        date: validatedData.date ? (validatedData.date instanceof Date ? validatedData.date : new Date(validatedData.date)) : new Date(),
         ingredients: ingredientsArray
       });
       
@@ -95,30 +95,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Parse validation data
-      const validatedData = insertMealSchema.parse(req.body);
+      const validatedData = insertMealSchema.parse({
+        ...req.body,
+        calories: Number(req.body.calories),
+        protein: Number(req.body.protein),
+        carbs: Number(req.body.carbs), 
+        fats: Number(req.body.fats)
+      });
       
       // Process ingredients safely
-      const ingredientsArray: string[] = [];
+      let ingredientsArray: string[] = [];
       
       // If ingredients exist and are an array, convert each to string safely
-      if (validatedData.ingredients && Array.isArray(validatedData.ingredients)) {
-        for (const item of validatedData.ingredients) {
-          if (item !== null && item !== undefined) {
-            ingredientsArray.push(String(item));
-          }
-        }
+      if (req.body.ingredients && Array.isArray(req.body.ingredients)) {
+        ingredientsArray = req.body.ingredients
+          .filter((item: any) => item !== null && item !== undefined)
+          .map((item: any) => String(item));
       }
       
       // Update meal with safe data
       const updatedMeal = await storage.updateMeal(mealId, {
         ...validatedData,
         userId,
-        date: validatedData.date || new Date(),
+        date: validatedData.date ? (validatedData.date instanceof Date ? validatedData.date : new Date(validatedData.date)) : new Date(),
         ingredients: ingredientsArray
       });
       
       res.json(updatedMeal);
     } catch (error) {
+      console.error('Error updating meal:', error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid meal data", errors: (error as any).errors });
+      }
       next(error);
     }
   });
@@ -177,7 +185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const waterEntry = await storage.addWaterIntake({
         ...validatedData,
         userId,
-        date: validatedData.date || new Date()
+        date: validatedData.date ? (validatedData.date instanceof Date ? validatedData.date : new Date(validatedData.date)) : new Date()
       });
       
       res.status(201).json(waterEntry);
