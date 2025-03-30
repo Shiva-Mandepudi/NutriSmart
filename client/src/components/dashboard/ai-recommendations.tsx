@@ -3,15 +3,24 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Meal } from "@shared/schema";
 
 export function AIRecommendations() {
   const { user } = useAuth();
   
-  const { data: meals, isLoading: isMealsLoading } = useQuery({
+  // Properly type our query responses
+  const { data: meals = [], isLoading: isMealsLoading } = useQuery<Meal[]>({
     queryKey: ['/api/meals'],
   });
   
-  const { data: subscription, isLoading: isSubscriptionLoading } = useQuery({
+  const { data: subscription = { plan: "free" }, isLoading: isSubscriptionLoading } = useQuery<{
+    plan: string;
+    id?: number;
+    userId?: number;
+    startDate?: string;
+    endDate?: string | null;
+    isActive?: boolean;
+  }>({
     queryKey: ['/api/subscription'],
   });
   
@@ -29,7 +38,7 @@ export function AIRecommendations() {
     }
     
     // Look at last 7 days of meals
-    const lastWeekMeals = meals.filter(meal => {
+    const lastWeekMeals = meals.filter((meal: Meal) => {
       const mealDate = new Date(meal.date);
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -37,7 +46,7 @@ export function AIRecommendations() {
     });
     
     // Calculate average protein
-    const avgProtein = lastWeekMeals.reduce((sum, meal) => sum + meal.protein, 0) / Math.max(1, lastWeekMeals.length);
+    const avgProtein = lastWeekMeals.reduce((sum: number, meal: Meal) => sum + (meal.protein || 0), 0) / Math.max(1, lastWeekMeals.length);
     const recommendedProtein = (user?.weightKg || 70) * 1.6; // 1.6g per kg of bodyweight
     
     if (avgProtein < recommendedProtein * 0.85) {
@@ -78,16 +87,12 @@ export function AIRecommendations() {
         </div>
         
         <div className="flex flex-wrap gap-3">
-          <Link href="/meal-plans">
-            <a className="py-2 px-4 bg-white text-primary-600 rounded-full font-medium shadow-lg hover:shadow-xl transition">
-              View Meal Plans
-            </a>
+          <Link href="/meal-plans" className="py-2 px-4 bg-white text-primary-600 rounded-full font-medium shadow-lg hover:shadow-xl transition">
+            View Meal Plans
           </Link>
           {!isUserPremium && (
-            <Link href="/subscription">
-              <a className="py-2 px-4 bg-white/20 hover:bg-white/30 rounded-full font-medium transition">
-                Upgrade for more insights
-              </a>
+            <Link href="/subscription" className="py-2 px-4 bg-white/20 hover:bg-white/30 rounded-full font-medium transition">
+              Upgrade for more insights
             </Link>
           )}
         </div>

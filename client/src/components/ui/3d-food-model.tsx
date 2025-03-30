@@ -52,11 +52,19 @@ export function ThreeDModel({
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    // Clear existing canvas
-    if (containerRef.current.firstChild) {
-      containerRef.current.removeChild(containerRef.current.firstChild);
+    // Safer approach to clearing the container
+    try {
+      // Remove any existing canvases first to prevent memory leaks
+      const existingCanvas = containerRef.current.querySelector('canvas');
+      if (existingCanvas) {
+        containerRef.current.removeChild(existingCanvas);
+      }
+      
+      // Now add the new renderer
+      containerRef.current.appendChild(renderer.domElement);
+    } catch (error) {
+      console.error("Error manipulating DOM:", error);
     }
-    containerRef.current.appendChild(renderer.domElement);
     
     // Add ambient light
     const ambientLight = new THREE.AmbientLight(

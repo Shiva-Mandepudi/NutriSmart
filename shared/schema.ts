@@ -137,7 +137,11 @@ export const insertMealSchema = createInsertSchema(meals).omit({ id: true, userI
     date: z.union([z.date(), z.string().datetime()]).optional()
   });
 export const insertWaterIntakeSchema = createInsertSchema(waterIntake).omit({ id: true, userId: true });
-export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, userId: true });
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, userId: true })
+  .extend({
+    // Accept both Date objects and ISO strings for date
+    date: z.union([z.date(), z.string().datetime()])
+  });
 
 // Export types for use in application
 export type InsertUser = z.infer<typeof insertUserSchema>;

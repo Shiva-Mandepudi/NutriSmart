@@ -281,8 +281,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const validatedData = insertAppointmentSchema.parse(req.body);
+      
+      // Ensure date is properly converted to a Date object
+      const date = typeof validatedData.date === 'string' 
+        ? new Date(validatedData.date) 
+        : validatedData.date;
+        
       const appointment = await storage.createAppointment({
         ...validatedData,
+        date,
         userId,
         status: validatedData.status || "scheduled",
         notes: validatedData.notes || null
