@@ -1,14 +1,18 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea"; 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Challenge, CommunityRecipe, SocialPost } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
+import { Challenge, CommunityRecipe, SocialPost, User } from "@shared/schema";
 import { format } from "date-fns";
-import { Loader2, MessageSquare, ThumbsUp, Users, Award, Calendar, Target } from "lucide-react";
+import { Loader2, MessageSquare, ThumbsUp, Users, Award, Calendar, Target, UserCheck, UserPlus, UserX } from "lucide-react";
 export default function CommunityPage() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -46,10 +50,23 @@ export default function CommunityPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Community</h1>
           <div className="flex space-x-2">
-            <Button variant="outline" onClick={() => toast({ title: "Coming soon", description: "This feature is coming soon!" })}>
-              <Users className="mr-2 h-4 w-4" />
-              Find Friends
-            </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Users className="mr-2 h-4 w-4" />
+                  Find Friends
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Find Friends</DialogTitle>
+                  <DialogDescription>
+                    Connect with other users to see their posts and progress.
+                  </DialogDescription>
+                </DialogHeader>
+                <FindFriends />
+              </DialogContent>
+            </Dialog>
             <Button onClick={() => toast({ title: "Coming soon", description: "This feature is coming soon!" })}>
               Create Post
             </Button>
@@ -284,5 +301,140 @@ function RecipeCard({ recipe }: { recipe: CommunityRecipe }) {
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+// Find Friends component
+function FindFriends() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Fetch all users
+  const { 
+    data: users, 
+    isLoading 
+  } = useQuery<User[]>({ 
+    queryKey: ["/api/social/users"], 
+    enabled: !!user
+  });
+  
+  // Filter out the current user and filter by search term
+  const filteredUsers = users?.filter(u => 
+    u.id !== user?.id && 
+    (u.username.toLowerCase().includes(searchTerm.toLowerCase()) || 
+     (u.firstName && u.firstName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+     (u.lastName && u.lastName.toLowerCase().includes(searchTerm.toLowerCase())))
+  ) || [];
+  
+  // Check if following a user
+  const checkFollowingStatus = (userId: number) => {
+    return useQuery<{following: boolean}>({
+      queryKey: [`/api/social/users/${userId}/is-following`],
+      enabled: !!user
+    });
+  };
+  
+  // Follow/unfollow a user
+  const followMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("POST", `/api/social/users/${userId}/follow`);
+      return await res.json();
+    },
+    onSuccess: (data, userId) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/social/users/${userId}/is-following`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/social/users"] });
+      
+      toast({
+        title: data.following ? "User followed" : "User unfollowed",
+        description: data.following 
+          ? "You are now following this user" 
+          : "You have unfollowed this user"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  const handleFollowToggle = (userId: number) => {
+    followMutation.mutate(userId);
+  };
+  
+  return (
+    <div className="py-4">
+      <div className="flex space-x-2 mb-4">
+        <Input
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1"
+        />
+      </div>
+      
+      <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+        {isLoading ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-muted-foreground">
+              {searchTerm ? "No users found matching your search" : "No other users found"}
+            </p>
+          </div>
+        ) : (
+          filteredUsers.map((otherUser) => {
+            const { data: followStatus, isLoading: isLoadingFollow } = checkFollowingStatus(otherUser.id);
+            const isFollowing = followStatus?.following || false;
+            
+            return (
+              <Card key={otherUser.id} className="flex items-center p-4">
+                <Avatar className="h-10 w-10 mr-4">
+                  {otherUser.profilePicture ? (
+                    <AvatarImage src={otherUser.profilePicture} alt={otherUser.username} />
+                  ) : (
+                    <AvatarFallback>{otherUser.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="flex-1">
+                  <p className="font-medium">
+                    {otherUser.firstName && otherUser.lastName 
+                      ? `${otherUser.firstName} ${otherUser.lastName}`
+                      : otherUser.username}
+                  </p>
+                  <p className="text-sm text-muted-foreground">@{otherUser.username}</p>
+                </div>
+                <Button 
+                  variant={isFollowing ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => handleFollowToggle(otherUser.id)}
+                  disabled={isLoadingFollow || followMutation.isPending}
+                >
+                  {isLoadingFollow ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : isFollowing ? (
+                    <>
+                      <UserCheck className="h-4 w-4 mr-1" />
+                      Following
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4 mr-1" />
+                      Follow
+                    </>
+                  )}
+                </Button>
+              </Card>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
