@@ -218,3 +218,6 @@ export function BMICalculator() {
     </Card>
   );
 }
+
+
+// Calculate is working fine
