@@ -6,7 +6,17 @@ import {
   products, type Product,
   blogPosts, type BlogPost,
   appointments, type Appointment,
-  subscriptions, type Subscription
+  subscriptions, type Subscription,
+  challenges, type Challenge, type InsertChallenge,
+  challengeParticipants, type ChallengeParticipant, type InsertChallengeParticipant,
+  communityRecipes, type CommunityRecipe, type InsertCommunityRecipe,
+  recipeRatings, type RecipeRating, type InsertRecipeRating,
+  recipeFavorites, type RecipeFavorite,
+  socialPosts, type SocialPost, type InsertSocialPost,
+  postComments, type PostComment, type InsertPostComment,
+  postLikes, type PostLike,
+  commentLikes, type CommentLike,
+  userFollowers, type UserFollower
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { db } from './db';
@@ -59,6 +69,70 @@ export interface IStorage {
   createSubscription(subscription: Omit<Subscription, "id">): Promise<Subscription>;
   isUserPremium(userId: number | undefined): Promise<boolean>;
   
+  // Challenge methods
+  getAllChallenges(): Promise<Challenge[]>;
+  getActiveChallenges(): Promise<Challenge[]>;
+  getChallengeById(id: number): Promise<Challenge | undefined>;
+  createChallenge(challenge: InsertChallenge): Promise<Challenge>;
+  updateChallenge(id: number, challenge: Partial<Challenge>): Promise<Challenge>;
+  
+  // Challenge participant methods
+  getChallengeParticipants(challengeId: number): Promise<ChallengeParticipant[]>;
+  getUserChallenges(userId: number): Promise<{challenge: Challenge, participant: ChallengeParticipant}[]>;
+  joinChallenge(data: InsertChallengeParticipant): Promise<ChallengeParticipant>;
+  updateChallengeProgress(challengeId: number, userId: number, progress: number): Promise<ChallengeParticipant>;
+  completeChallenge(challengeId: number, userId: number): Promise<ChallengeParticipant>;
+  
+  // Community Recipe methods
+  getAllCommunityRecipes(page?: number, limit?: number): Promise<CommunityRecipe[]>;
+  getCommunityRecipeById(id: number): Promise<CommunityRecipe | undefined>;
+  getUserRecipes(userId: number): Promise<CommunityRecipe[]>;
+  createCommunityRecipe(recipe: InsertCommunityRecipe & { userId: number }): Promise<CommunityRecipe>;
+  updateCommunityRecipe(id: number, recipe: Partial<CommunityRecipe>): Promise<CommunityRecipe>;
+  deleteCommunityRecipe(id: number): Promise<void>;
+  
+  // Recipe rating methods
+  getRecipeRatings(recipeId: number): Promise<RecipeRating[]>;
+  getUserRecipeRating(recipeId: number, userId: number): Promise<RecipeRating | undefined>;
+  rateRecipe(rating: InsertRecipeRating & { userId: number }): Promise<RecipeRating>;
+  
+  // Recipe favorites methods
+  getUserFavoriteRecipes(userId: number): Promise<CommunityRecipe[]>;
+  addRecipeToFavorites(recipeId: number, userId: number): Promise<void>;
+  removeRecipeFromFavorites(recipeId: number, userId: number): Promise<void>;
+  isRecipeFavorited(recipeId: number, userId: number): Promise<boolean>;
+  
+  // Social post methods
+  getAllSocialPosts(page?: number, limit?: number): Promise<SocialPost[]>;
+  getUserSocialPosts(userId: number): Promise<SocialPost[]>;
+  getSocialPostById(id: number): Promise<SocialPost | undefined>;
+  createSocialPost(post: InsertSocialPost & { userId: number }): Promise<SocialPost>;
+  updateSocialPost(id: number, post: Partial<SocialPost>): Promise<SocialPost>;
+  deleteSocialPost(id: number): Promise<void>;
+  
+  // Post comment methods
+  getPostComments(postId: number): Promise<PostComment[]>;
+  createPostComment(comment: InsertPostComment & { userId: number }): Promise<PostComment>;
+  updatePostComment(id: number, comment: Partial<PostComment>): Promise<PostComment>;
+  deletePostComment(id: number): Promise<void>;
+  
+  // Post like methods
+  likePost(postId: number, userId: number): Promise<void>;
+  unlikePost(postId: number, userId: number): Promise<void>;
+  isPostLiked(postId: number, userId: number): Promise<boolean>;
+  
+  // Comment like methods
+  likeComment(commentId: number, userId: number): Promise<void>;
+  unlikeComment(commentId: number, userId: number): Promise<void>;
+  isCommentLiked(commentId: number, userId: number): Promise<boolean>;
+  
+  // User follower methods
+  followUser(followerId: number, followingId: number): Promise<void>;
+  unfollowUser(followerId: number, followingId: number): Promise<void>;
+  getUserFollowers(userId: number): Promise<User[]>;
+  getUserFollowing(userId: number): Promise<User[]>;
+  isUserFollowing(followerId: number, followingId: number): Promise<boolean>;
+  
   // Session store
   sessionStore: any;
 }
@@ -73,10 +147,23 @@ export class MemStorage implements IStorage {
   private appointmentsStore: Map<number, Appointment>;
   private subscriptionsStore: Map<number, Subscription>;
   
+  // Social feature stores
+  private challengesStore: Map<number, Challenge>;
+  private challengeParticipantsStore: Map<string, ChallengeParticipant>;
+  private communityRecipesStore: Map<number, CommunityRecipe>;
+  private recipeRatingsStore: Map<number, RecipeRating>;
+  private recipeFavoritesStore: Map<string, RecipeFavorite>;
+  private socialPostsStore: Map<number, SocialPost>;
+  private postCommentsStore: Map<number, PostComment>;
+  private postLikesStore: Map<string, PostLike>;
+  private commentLikesStore: Map<string, CommentLike>;
+  private userFollowersStore: Map<string, UserFollower>;
+  
   sessionStore: any;
   currentId: { [key: string]: number };
 
   constructor() {
+    // Initialize main feature stores
     this.usersStore = new Map();
     this.mealsStore = new Map();
     this.waterIntakeStore = new Map();
@@ -85,6 +172,18 @@ export class MemStorage implements IStorage {
     this.blogPostsStore = new Map();
     this.appointmentsStore = new Map();
     this.subscriptionsStore = new Map();
+    
+    // Initialize social feature stores
+    this.challengesStore = new Map();
+    this.challengeParticipantsStore = new Map();
+    this.communityRecipesStore = new Map();
+    this.recipeRatingsStore = new Map();
+    this.recipeFavoritesStore = new Map();
+    this.socialPostsStore = new Map();
+    this.postCommentsStore = new Map();
+    this.postLikesStore = new Map();
+    this.commentLikesStore = new Map();
+    this.userFollowersStore = new Map();
     
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // One day
@@ -98,7 +197,12 @@ export class MemStorage implements IStorage {
       products: 1,
       blogPosts: 1,
       appointments: 1,
-      subscriptions: 1
+      subscriptions: 1,
+      challenges: 1,
+      communityRecipes: 1,
+      recipeRatings: 1,
+      socialPosts: 1,
+      postComments: 1
     };
     
     // Init with sample data
@@ -300,6 +404,602 @@ export class MemStorage implements IStorage {
     
     const subscription = await this.getSubscriptionByUserId(userId);
     return Boolean(subscription?.isActive && subscription?.plan === "premium");
+  }
+  
+  // Challenge methods
+  async getAllChallenges(): Promise<Challenge[]> {
+    return Array.from(this.challengesStore.values());
+  }
+  
+  async getActiveChallenges(): Promise<Challenge[]> {
+    const now = new Date();
+    return Array.from(this.challengesStore.values())
+      .filter(challenge => 
+        challenge.isActive && 
+        new Date(challenge.startDate) <= now && 
+        new Date(challenge.endDate) >= now
+      );
+  }
+  
+  async getChallengeById(id: number): Promise<Challenge | undefined> {
+    return this.challengesStore.get(id);
+  }
+  
+  async createChallenge(challenge: InsertChallenge): Promise<Challenge> {
+    const id = this.currentId.challenges++;
+    const newChallenge: Challenge = { 
+      ...challenge, 
+      id, 
+      createdAt: new Date() 
+    };
+    this.challengesStore.set(id, newChallenge);
+    return newChallenge;
+  }
+  
+  async updateChallenge(id: number, challengeData: Partial<Challenge>): Promise<Challenge> {
+    const existingChallenge = this.challengesStore.get(id);
+    if (!existingChallenge) {
+      throw new Error("Challenge not found");
+    }
+    
+    const updatedChallenge = { ...existingChallenge, ...challengeData };
+    this.challengesStore.set(id, updatedChallenge);
+    return updatedChallenge;
+  }
+  
+  // Challenge participant methods
+  async getChallengeParticipants(challengeId: number): Promise<ChallengeParticipant[]> {
+    return Array.from(this.challengeParticipantsStore.values())
+      .filter(participant => participant.challengeId === challengeId);
+  }
+  
+  async getUserChallenges(userId: number): Promise<{challenge: Challenge, participant: ChallengeParticipant}[]> {
+    const userParticipations = Array.from(this.challengeParticipantsStore.values())
+      .filter(participant => participant.userId === userId);
+      
+    return userParticipations.map(participant => {
+      const challenge = this.challengesStore.get(participant.challengeId);
+      if (!challenge) {
+        throw new Error(`Challenge not found for participant: ${participant.challengeId}`);
+      }
+      return { 
+        challenge, 
+        participant 
+      };
+    });
+  }
+  
+  async joinChallenge(data: InsertChallengeParticipant): Promise<ChallengeParticipant> {
+    const key = `${data.challengeId}-${data.userId}`;
+    const existing = this.challengeParticipantsStore.get(key);
+    
+    if (existing) {
+      return existing; // User already joined this challenge
+    }
+    
+    const newParticipant: ChallengeParticipant = {
+      ...data,
+      joinDate: new Date(),
+      progress: 0,
+      completed: false,
+      completedDate: null
+    };
+    
+    this.challengeParticipantsStore.set(key, newParticipant);
+    return newParticipant;
+  }
+  
+  async updateChallengeProgress(challengeId: number, userId: number, progress: number): Promise<ChallengeParticipant> {
+    const key = `${challengeId}-${userId}`;
+    const participant = this.challengeParticipantsStore.get(key);
+    
+    if (!participant) {
+      throw new Error("Challenge participant not found");
+    }
+    
+    const challenge = this.challengesStore.get(challengeId);
+    if (!challenge) {
+      throw new Error("Challenge not found");
+    }
+    
+    const updatedParticipant = { 
+      ...participant, 
+      progress 
+    };
+    
+    // Check if challenge is now completed
+    if (progress >= challenge.goalValue && !participant.completed) {
+      updatedParticipant.completed = true;
+      updatedParticipant.completedDate = new Date();
+    }
+    
+    this.challengeParticipantsStore.set(key, updatedParticipant);
+    return updatedParticipant;
+  }
+  
+  async completeChallenge(challengeId: number, userId: number): Promise<ChallengeParticipant> {
+    const key = `${challengeId}-${userId}`;
+    const participant = this.challengeParticipantsStore.get(key);
+    
+    if (!participant) {
+      throw new Error("Challenge participant not found");
+    }
+    
+    const challenge = this.challengesStore.get(challengeId);
+    if (!challenge) {
+      throw new Error("Challenge not found");
+    }
+    
+    const updatedParticipant = { 
+      ...participant, 
+      progress: challenge.goalValue,
+      completed: true,
+      completedDate: new Date()
+    };
+    
+    this.challengeParticipantsStore.set(key, updatedParticipant);
+    return updatedParticipant;
+  }
+  
+  // Community Recipe methods
+  async getAllCommunityRecipes(page: number = 1, limit: number = 10): Promise<CommunityRecipe[]> {
+    const recipes = Array.from(this.communityRecipesStore.values())
+      .filter(recipe => recipe.isPublic)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    const startIndex = (page - 1) * limit;
+    return recipes.slice(startIndex, startIndex + limit);
+  }
+  
+  async getCommunityRecipeById(id: number): Promise<CommunityRecipe | undefined> {
+    const recipe = this.communityRecipesStore.get(id);
+    return recipe?.isPublic ? recipe : undefined;
+  }
+  
+  async getUserRecipes(userId: number): Promise<CommunityRecipe[]> {
+    return Array.from(this.communityRecipesStore.values())
+      .filter(recipe => recipe.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  
+  async createCommunityRecipe(recipeData: InsertCommunityRecipe & { userId: number }): Promise<CommunityRecipe> {
+    const id = this.currentId.communityRecipes++;
+    const now = new Date();
+    
+    const newRecipe: CommunityRecipe = {
+      ...recipeData,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.communityRecipesStore.set(id, newRecipe);
+    return newRecipe;
+  }
+  
+  async updateCommunityRecipe(id: number, recipeData: Partial<CommunityRecipe>): Promise<CommunityRecipe> {
+    const existingRecipe = this.communityRecipesStore.get(id);
+    if (!existingRecipe) {
+      throw new Error("Recipe not found");
+    }
+    
+    const updatedRecipe = { 
+      ...existingRecipe, 
+      ...recipeData, 
+      updatedAt: new Date() 
+    };
+    
+    this.communityRecipesStore.set(id, updatedRecipe);
+    return updatedRecipe;
+  }
+  
+  async deleteCommunityRecipe(id: number): Promise<void> {
+    if (!this.communityRecipesStore.has(id)) {
+      throw new Error("Recipe not found");
+    }
+    
+    this.communityRecipesStore.delete(id);
+    
+    // Delete all ratings associated with this recipe
+    const ratings = Array.from(this.recipeRatingsStore.values())
+      .filter(rating => rating.recipeId === id);
+      
+    ratings.forEach(rating => {
+      this.recipeRatingsStore.delete(rating.id);
+    });
+    
+    // Remove recipe from all favorites
+    Array.from(this.recipeFavoritesStore.keys())
+      .filter(key => key.startsWith(`${id}-`))
+      .forEach(key => {
+        this.recipeFavoritesStore.delete(key);
+      });
+  }
+  
+  // Recipe rating methods
+  async getRecipeRatings(recipeId: number): Promise<RecipeRating[]> {
+    return Array.from(this.recipeRatingsStore.values())
+      .filter(rating => rating.recipeId === recipeId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  
+  async getUserRecipeRating(recipeId: number, userId: number): Promise<RecipeRating | undefined> {
+    return Array.from(this.recipeRatingsStore.values())
+      .find(rating => rating.recipeId === recipeId && rating.userId === userId);
+  }
+  
+  async rateRecipe(ratingData: InsertRecipeRating & { userId: number }): Promise<RecipeRating> {
+    // Check if user already rated this recipe
+    const existingRating = await this.getUserRecipeRating(ratingData.recipeId, ratingData.userId);
+    
+    if (existingRating) {
+      // Update existing rating
+      const updatedRating = { 
+        ...existingRating, 
+        rating: ratingData.rating,
+        comment: ratingData.comment 
+      };
+      
+      this.recipeRatingsStore.set(existingRating.id, updatedRating);
+      return updatedRating;
+    }
+    
+    // Create new rating
+    const id = this.currentId.recipeRatings++;
+    const newRating: RecipeRating = {
+      ...ratingData,
+      id,
+      createdAt: new Date()
+    };
+    
+    this.recipeRatingsStore.set(id, newRating);
+    return newRating;
+  }
+  
+  // Recipe favorites methods
+  async getUserFavoriteRecipes(userId: number): Promise<CommunityRecipe[]> {
+    const favoriteKeys = Array.from(this.recipeFavoritesStore.keys())
+      .filter(key => key.endsWith(`-${userId}`));
+      
+    return favoriteKeys.map(key => {
+      const recipeId = parseInt(key.split('-')[0]);
+      const recipe = this.communityRecipesStore.get(recipeId);
+      if (!recipe) {
+        throw new Error(`Recipe not found: ${recipeId}`);
+      }
+      return recipe;
+    })
+    .filter(recipe => recipe.isPublic);
+  }
+  
+  async addRecipeToFavorites(recipeId: number, userId: number): Promise<void> {
+    const key = `${recipeId}-${userId}`;
+    
+    if (this.recipeFavoritesStore.has(key)) {
+      return; // Already favorited
+    }
+    
+    const recipe = this.communityRecipesStore.get(recipeId);
+    if (!recipe) {
+      throw new Error("Recipe not found");
+    }
+    
+    const favorite: RecipeFavorite = {
+      recipeId,
+      userId,
+      addedAt: new Date()
+    };
+    
+    this.recipeFavoritesStore.set(key, favorite);
+  }
+  
+  async removeRecipeFromFavorites(recipeId: number, userId: number): Promise<void> {
+    const key = `${recipeId}-${userId}`;
+    
+    if (!this.recipeFavoritesStore.has(key)) {
+      return; // Not favorited
+    }
+    
+    this.recipeFavoritesStore.delete(key);
+  }
+  
+  async isRecipeFavorited(recipeId: number, userId: number): Promise<boolean> {
+    const key = `${recipeId}-${userId}`;
+    return this.recipeFavoritesStore.has(key);
+  }
+  
+  // Social post methods
+  async getAllSocialPosts(page: number = 1, limit: number = 10): Promise<SocialPost[]> {
+    const posts = Array.from(this.socialPostsStore.values())
+      .filter(post => post.isVisible)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+    const startIndex = (page - 1) * limit;
+    return posts.slice(startIndex, startIndex + limit);
+  }
+  
+  async getUserSocialPosts(userId: number): Promise<SocialPost[]> {
+    return Array.from(this.socialPostsStore.values())
+      .filter(post => post.userId === userId && post.isVisible)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  
+  async getSocialPostById(id: number): Promise<SocialPost | undefined> {
+    const post = this.socialPostsStore.get(id);
+    return post?.isVisible ? post : undefined;
+  }
+  
+  async createSocialPost(postData: InsertSocialPost & { userId: number }): Promise<SocialPost> {
+    const id = this.currentId.socialPosts++;
+    const now = new Date();
+    
+    const newPost: SocialPost = {
+      ...postData,
+      id,
+      likesCount: 0,
+      commentsCount: 0,
+      isVisible: true,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.socialPostsStore.set(id, newPost);
+    return newPost;
+  }
+  
+  async updateSocialPost(id: number, postData: Partial<SocialPost>): Promise<SocialPost> {
+    const existingPost = this.socialPostsStore.get(id);
+    if (!existingPost) {
+      throw new Error("Post not found");
+    }
+    
+    const updatedPost = { 
+      ...existingPost, 
+      ...postData, 
+      updatedAt: new Date() 
+    };
+    
+    this.socialPostsStore.set(id, updatedPost);
+    return updatedPost;
+  }
+  
+  async deleteSocialPost(id: number): Promise<void> {
+    const post = this.socialPostsStore.get(id);
+    if (!post) {
+      throw new Error("Post not found");
+    }
+    
+    // Soft delete - just mark as invisible
+    post.isVisible = false;
+    this.socialPostsStore.set(id, post);
+  }
+  
+  // Post comment methods
+  async getPostComments(postId: number): Promise<PostComment[]> {
+    return Array.from(this.postCommentsStore.values())
+      .filter(comment => comment.postId === postId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+  
+  async createPostComment(commentData: InsertPostComment & { userId: number }): Promise<PostComment> {
+    const id = this.currentId.postComments++;
+    const now = new Date();
+    
+    const newComment: PostComment = {
+      ...commentData,
+      id,
+      likesCount: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.postCommentsStore.set(id, newComment);
+    
+    // Update post comments count
+    const post = this.socialPostsStore.get(commentData.postId);
+    if (post) {
+      post.commentsCount += 1;
+      this.socialPostsStore.set(post.id, post);
+    }
+    
+    return newComment;
+  }
+  
+  async updatePostComment(id: number, commentData: Partial<PostComment>): Promise<PostComment> {
+    const existingComment = this.postCommentsStore.get(id);
+    if (!existingComment) {
+      throw new Error("Comment not found");
+    }
+    
+    const updatedComment = { 
+      ...existingComment, 
+      ...commentData, 
+      updatedAt: new Date() 
+    };
+    
+    this.postCommentsStore.set(id, updatedComment);
+    return updatedComment;
+  }
+  
+  async deletePostComment(id: number): Promise<void> {
+    const comment = this.postCommentsStore.get(id);
+    if (!comment) {
+      throw new Error("Comment not found");
+    }
+    
+    this.postCommentsStore.delete(id);
+    
+    // Update post comments count
+    const post = this.socialPostsStore.get(comment.postId);
+    if (post) {
+      post.commentsCount = Math.max(0, post.commentsCount - 1);
+      this.socialPostsStore.set(post.id, post);
+    }
+    
+    // Delete all likes for this comment
+    Array.from(this.commentLikesStore.keys())
+      .filter(key => key.startsWith(`${id}-`))
+      .forEach(key => {
+        this.commentLikesStore.delete(key);
+      });
+  }
+  
+  // Post like methods
+  async likePost(postId: number, userId: number): Promise<void> {
+    const key = `${postId}-${userId}`;
+    
+    if (this.postLikesStore.has(key)) {
+      return; // Already liked
+    }
+    
+    const post = this.socialPostsStore.get(postId);
+    if (!post) {
+      throw new Error("Post not found");
+    }
+    
+    const like: PostLike = {
+      postId,
+      userId,
+      createdAt: new Date()
+    };
+    
+    this.postLikesStore.set(key, like);
+    
+    // Update post like count
+    post.likesCount += 1;
+    this.socialPostsStore.set(postId, post);
+  }
+  
+  async unlikePost(postId: number, userId: number): Promise<void> {
+    const key = `${postId}-${userId}`;
+    
+    if (!this.postLikesStore.has(key)) {
+      return; // Not liked
+    }
+    
+    this.postLikesStore.delete(key);
+    
+    // Update post like count
+    const post = this.socialPostsStore.get(postId);
+    if (post) {
+      post.likesCount = Math.max(0, post.likesCount - 1);
+      this.socialPostsStore.set(postId, post);
+    }
+  }
+  
+  async isPostLiked(postId: number, userId: number): Promise<boolean> {
+    const key = `${postId}-${userId}`;
+    return this.postLikesStore.has(key);
+  }
+  
+  // Comment like methods
+  async likeComment(commentId: number, userId: number): Promise<void> {
+    const key = `${commentId}-${userId}`;
+    
+    if (this.commentLikesStore.has(key)) {
+      return; // Already liked
+    }
+    
+    const comment = this.postCommentsStore.get(commentId);
+    if (!comment) {
+      throw new Error("Comment not found");
+    }
+    
+    const like: CommentLike = {
+      commentId,
+      userId,
+      createdAt: new Date()
+    };
+    
+    this.commentLikesStore.set(key, like);
+    
+    // Update comment like count
+    comment.likesCount += 1;
+    this.postCommentsStore.set(commentId, comment);
+  }
+  
+  async unlikeComment(commentId: number, userId: number): Promise<void> {
+    const key = `${commentId}-${userId}`;
+    
+    if (!this.commentLikesStore.has(key)) {
+      return; // Not liked
+    }
+    
+    this.commentLikesStore.delete(key);
+    
+    // Update comment like count
+    const comment = this.postCommentsStore.get(commentId);
+    if (comment) {
+      comment.likesCount = Math.max(0, comment.likesCount - 1);
+      this.postCommentsStore.set(commentId, comment);
+    }
+  }
+  
+  async isCommentLiked(commentId: number, userId: number): Promise<boolean> {
+    const key = `${commentId}-${userId}`;
+    return this.commentLikesStore.has(key);
+  }
+  
+  // User follower methods
+  async followUser(followerId: number, followingId: number): Promise<void> {
+    if (followerId === followingId) {
+      throw new Error("User cannot follow themselves");
+    }
+    
+    const key = `${followerId}-${followingId}`;
+    
+    if (this.userFollowersStore.has(key)) {
+      return; // Already following
+    }
+    
+    // Check if both users exist
+    const follower = this.usersStore.get(followerId);
+    const following = this.usersStore.get(followingId);
+    
+    if (!follower || !following) {
+      throw new Error("One or both users not found");
+    }
+    
+    const followerRelation: UserFollower = {
+      followerId,
+      followingId,
+      createdAt: new Date()
+    };
+    
+    this.userFollowersStore.set(key, followerRelation);
+  }
+  
+  async unfollowUser(followerId: number, followingId: number): Promise<void> {
+    const key = `${followerId}-${followingId}`;
+    
+    if (!this.userFollowersStore.has(key)) {
+      return; // Not following
+    }
+    
+    this.userFollowersStore.delete(key);
+  }
+  
+  async getUserFollowers(userId: number): Promise<User[]> {
+    const followerIds = Array.from(this.userFollowersStore.values())
+      .filter(relation => relation.followingId === userId)
+      .map(relation => relation.followerId);
+      
+    return followerIds.map(id => this.usersStore.get(id))
+      .filter((user): user is User => user !== undefined);
+  }
+  
+  async getUserFollowing(userId: number): Promise<User[]> {
+    const followingIds = Array.from(this.userFollowersStore.values())
+      .filter(relation => relation.followerId === userId)
+      .map(relation => relation.followingId);
+      
+    return followingIds.map(id => this.usersStore.get(id))
+      .filter((user): user is User => user !== undefined);
+  }
+  
+  async isUserFollowing(followerId: number, followingId: number): Promise<boolean> {
+    const key = `${followerId}-${followingId}`;
+    return this.userFollowersStore.has(key);
   }
 
   // Initialize sample data for testing and demo purposes

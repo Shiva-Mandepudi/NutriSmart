@@ -8,7 +8,8 @@ import {
   MessageSquare, 
   Calculator, 
   Clock,
-  Menu
+  Menu,
+  Users
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -99,6 +100,12 @@ export function MobileNav() {
       icon: <BookOpen className="w-5 h-5" />,
       label: "Blog",
       isActive: location.startsWith("/blog"),
+    },
+    {
+      href: "/community",
+      icon: <Users className="w-5 h-5" />,
+      label: "Community",
+      isActive: location.startsWith("/community"),
     },
     {
       href: "/profile",

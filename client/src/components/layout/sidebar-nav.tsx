@@ -11,7 +11,8 @@ import {
   ShoppingBag,
   User,
   Leaf,
-  PlusCircle
+  PlusCircle,
+  Users
 } from "lucide-react";
 
 // Navigation items with their icons
@@ -55,6 +56,11 @@ const navigationItems = [
     name: "Blog",
     href: "/blog",
     icon: BookOpen,
+  },
+  {
+    name: "Community",
+    href: "/community",
+    icon: Users,
   },
   {
     name: "Profile",
