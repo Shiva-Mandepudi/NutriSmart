@@ -36,6 +36,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, user: Partial<User>): Promise<User>;
   deleteUser(id: number): Promise<void>;
+  getAllUsers(): Promise<User[]>;
   
   // Meal methods
   getMealsByUserId(userId: number): Promise<Meal[]>;
@@ -47,6 +48,80 @@ export interface IStorage {
   // Water intake methods
   getWaterIntakeByUserId(userId: number): Promise<WaterIntake[]>;
   addWaterIntake(waterIntake: Omit<WaterIntake, "id">): Promise<WaterIntake>;
+  
+  // Social post methods
+  getAllSocialPosts(page?: number, limit?: number): Promise<SocialPost[]>;
+  getUserSocialPosts(userId: number): Promise<SocialPost[]>;
+  getSocialPostById(id: number): Promise<SocialPost | undefined>;
+  createSocialPost(post: InsertSocialPost & { userId: number }): Promise<SocialPost>;
+  updateSocialPost(id: number, post: Partial<SocialPost>): Promise<SocialPost>;
+  deleteSocialPost(id: number): Promise<void>;
+  
+  // Post comment methods
+  getPostComments(postId: number): Promise<PostComment[]>;
+  createPostComment(comment: InsertPostComment & { userId: number }): Promise<PostComment>;
+  updatePostComment(id: number, comment: Partial<PostComment>): Promise<PostComment>;
+  deletePostComment(id: number): Promise<void>;
+  
+  // Post like methods
+  likePost(postId: number, userId: number): Promise<void>;
+  unlikePost(postId: number, userId: number): Promise<void>;
+  isPostLiked(postId: number, userId: number): Promise<boolean>;
+  
+  // Comment like methods
+  likeComment(commentId: number, userId: number): Promise<void>;
+  unlikeComment(commentId: number, userId: number): Promise<void>;
+  isCommentLiked(commentId: number, userId: number): Promise<boolean>;
+  
+  // Challenge methods
+  getAllChallenges(): Promise<Challenge[]>;
+  getActiveChallenges(): Promise<Challenge[]>;
+  getChallengeById(id: number): Promise<Challenge | undefined>;
+  createChallenge(challenge: InsertChallenge): Promise<Challenge>;
+  updateChallenge(id: number, challenge: Partial<Challenge>): Promise<Challenge>;
+  
+  // Challenge participant methods
+  getChallengeParticipants(challengeId: number): Promise<ChallengeParticipant[]>;
+  getUserChallenges(userId: number): Promise<{challenge: Challenge, participant: ChallengeParticipant}[]>;
+  joinChallenge(data: InsertChallengeParticipant): Promise<ChallengeParticipant>;
+  updateChallengeProgress(challengeId: number, userId: number, progress: number): Promise<ChallengeParticipant>;
+  completeChallenge(challengeId: number, userId: number): Promise<ChallengeParticipant>;
+  getChallengeParticipant(challengeId: number, userId: number): Promise<ChallengeParticipant | undefined>;
+  
+  // Community Recipe methods
+  getAllCommunityRecipes(page?: number, limit?: number): Promise<CommunityRecipe[]>;
+  getCommunityRecipeById(id: number): Promise<CommunityRecipe | undefined>;
+  getUserRecipes(userId: number): Promise<CommunityRecipe[]>;
+  createCommunityRecipe(recipe: InsertCommunityRecipe & { userId: number }): Promise<CommunityRecipe>;
+  updateCommunityRecipe(id: number, recipe: Partial<CommunityRecipe>): Promise<CommunityRecipe>;
+  deleteCommunityRecipe(id: number): Promise<void>;
+  
+  // Recipe rating methods
+  getRecipeRatings(recipeId: number): Promise<RecipeRating[]>;
+  getUserRecipeRating(recipeId: number, userId: number): Promise<RecipeRating | undefined>;
+  rateRecipe(rating: InsertRecipeRating & { userId: number }): Promise<RecipeRating>;
+  getRecipeRating(recipeId: number, userId: number): Promise<RecipeRating | undefined>;
+  updateRecipeRating(id: number, rating: Partial<RecipeRating>): Promise<RecipeRating>;
+  createRecipeRating(rating: InsertRecipeRating & { userId: number }): Promise<RecipeRating>;
+  
+  // Recipe favorites methods
+  getUserFavoriteRecipes(userId: number): Promise<CommunityRecipe[]>;
+  addRecipeToFavorites(recipeId: number, userId: number): Promise<void>;
+  removeRecipeFromFavorites(recipeId: number, userId: number): Promise<void>;
+  isRecipeFavorited(recipeId: number, userId: number): Promise<boolean>;
+  getRecipeFavorite(recipeId: number, userId: number): Promise<RecipeFavorite | undefined>;
+  addRecipeFavorite(recipeId: number, userId: number): Promise<RecipeFavorite>;
+  removeRecipeFavorite(recipeId: number, userId: number): Promise<void>;
+  
+  // User follower methods
+  followUser(followerId: number, followingId: number): Promise<void>;
+  unfollowUser(followerId: number, followingId: number): Promise<void>;
+  getUserFollowers(userId: number): Promise<User[]>;
+  getUserFollowing(userId: number): Promise<User[]>;
+  isUserFollowing(followerId: number, followingId: number): Promise<boolean>;
+  getUserFollower(targetUserId: number, followerUserId: number): Promise<UserFollower | undefined>;
+  addUserFollower(targetUserId: number, followerUserId: number): Promise<UserFollower>;
+  removeUserFollower(targetUserId: number, followerUserId: number): Promise<void>;
   
   // Meal plan methods
   getAllMealPlans(): Promise<MealPlan[]>;
@@ -224,6 +299,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.usersStore.values()).find(
       (user) => user.email === email,
     );
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.usersStore.values());
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -1620,4 +1699,9 @@ export class DatabaseStorage implements IStorage {
 }
 
 // Use database storage
-export const storage = new DatabaseStorage();
+import type { DatabaseStorage } from './dbStorage';
+
+// Initialize storage - using memory storage by default
+const storage: IStorage = new MemStorage();
+
+export { storage };
