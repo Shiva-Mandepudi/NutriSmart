@@ -19,6 +19,7 @@ import ShopPage from "@/pages/shop-page";
 import CalculatorsPage from "@/pages/calculators-page";
 import AppointmentsPage from "@/pages/appointments-page";
 import ChatPage from "@/pages/chat-page";
+import CommunityPage from "@/pages/community-page";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -120,6 +121,17 @@ function Router() {
           component={() => (
             <AppLayout>
               <ChatPage />
+            </AppLayout>
+          )} 
+        />
+      </Route>
+      
+      <Route path="/community">
+        <ProtectedRoute 
+          path="/community" 
+          component={() => (
+            <AppLayout>
+              <CommunityPage />
             </AppLayout>
           )} 
         />
