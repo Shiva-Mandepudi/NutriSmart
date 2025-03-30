@@ -57,8 +57,10 @@ export default function AppointmentsPage() {
   
   // Create appointment mutation
   const createAppointmentMutation = useMutation({
-    mutationFn: async (appointmentData: Omit<Appointment, "id" | "userId">) => {
-      const res = await apiRequest("POST", "/api/appointments", appointmentData);
+    mutationFn: async (appointmentData: any) => {
+      // Remove time property before sending to API
+      const { time, ...appointmentToSend } = appointmentData;
+      const res = await apiRequest("POST", "/api/appointments", appointmentToSend);
       return await res.json();
     },
     onSuccess: () => {
@@ -99,7 +101,7 @@ export default function AppointmentsPage() {
   
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header />
+     
       
       <main className="flex-grow">
         <section className="container mx-auto px-4 py-6">
@@ -240,7 +242,20 @@ export default function AppointmentsPage() {
           
           <AppointmentForm 
             selectedDate={selectedDate}
-            onSubmit={(data) => createAppointmentMutation.mutate(data)}
+            onSubmit={(data) => {
+              // Process the date and time to create a proper date object 
+              const [hours, minutes] = data.time.split(':').map(Number);
+              const appointmentDate = new Date(data.date);
+              appointmentDate.setHours(hours, minutes, 0, 0);
+              
+              // Convert Date object to ISO string format for transmission
+              createAppointmentMutation.mutate({
+                type: data.type,
+                date: appointmentDate.toISOString(),
+                status: "scheduled",
+                notes: data.notes || null
+              });
+            }}
             isSubmitting={createAppointmentMutation.isPending}
           />
         </DialogContent>

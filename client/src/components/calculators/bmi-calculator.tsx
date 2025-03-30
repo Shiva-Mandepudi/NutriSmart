@@ -17,7 +17,7 @@ import {
   Card, 
   CardContent, 
   CardDescription, 
-  CardFooter, The
+  CardFooter
 } from "@/components/ui/card";
 import { 
   Tabs, 
