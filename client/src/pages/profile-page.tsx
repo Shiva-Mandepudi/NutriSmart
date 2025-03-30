@@ -46,6 +46,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, UserIcon, Lock, LogOut, Save, Upload, Trash2 } from "lucide-react";
 import { DietPreferencesForm } from "@/components/forms/diet-preferences-form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
+} from "@/components/ui/dialog";
+import { User } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 // Form validation schemas
 const profileFormSchema = z.object({
@@ -142,11 +154,13 @@ export default function ProfilePage() {
               )}
             </Avatar>
             
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold">
                 {user.firstName} {user.lastName}
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">@{user.username}</p>
+              <p className="text-gray-600 dark:text-gray-400 mb-2">@{user.username}</p>
+              
+              <SocialCounts userId={user.id} />
             </div>
           </div>
           
@@ -452,6 +466,139 @@ export default function ProfilePage() {
       </main>
       
       <MobileNav />
+    </div>
+  );
+}
+
+// Social counts component
+function SocialCounts({ userId }: { userId: number }) {
+  const [showFollowers, setShowFollowers] = useState(false);
+  const [showFollowing, setShowFollowing] = useState(false);
+  
+  // Fetch followers
+  const { 
+    data: followers,
+    isLoading: isLoadingFollowers 
+  } = useQuery<User[]>({ 
+    queryKey: [`/api/social/users/${userId}/followers`], 
+    enabled: true
+  });
+  
+  // Fetch following
+  const { 
+    data: following,
+    isLoading: isLoadingFollowing 
+  } = useQuery<User[]>({ 
+    queryKey: [`/api/social/users/${userId}/following`], 
+    enabled: true
+  });
+  
+  const followersCount = followers?.length || 0;
+  const followingCount = following?.length || 0;
+  
+  return (
+    <div className="flex space-x-4">
+      <Dialog open={showFollowers} onOpenChange={setShowFollowers}>
+        <DialogTrigger asChild>
+          <Button variant="link" className="h-auto p-0">
+            <Badge variant="outline" className="px-3 py-1 cursor-pointer hover:bg-secondary">
+              <span className="font-bold mr-1">{followersCount}</span> Followers
+            </Badge>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Followers</DialogTitle>
+            <DialogDescription>
+              People who follow you
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
+            {isLoadingFollowers ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !followers || followers.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">You don't have any followers yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {followers.map((follower) => (
+                  <Card key={follower.id} className="flex items-center p-4">
+                    <Avatar className="h-10 w-10 mr-4">
+                      {follower.profilePicture ? (
+                        <AvatarImage src={follower.profilePicture} alt={follower.username} />
+                      ) : (
+                        <AvatarFallback>{follower.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {follower.firstName && follower.lastName 
+                          ? `${follower.firstName} ${follower.lastName}`
+                          : follower.username}
+                      </p>
+                      <p className="text-sm text-muted-foreground">@{follower.username}</p>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={showFollowing} onOpenChange={setShowFollowing}>
+        <DialogTrigger asChild>
+          <Button variant="link" className="h-auto p-0">
+            <Badge variant="outline" className="px-3 py-1 cursor-pointer hover:bg-secondary">
+              <span className="font-bold mr-1">{followingCount}</span> Following
+            </Badge>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Following</DialogTitle>
+            <DialogDescription>
+              People you follow
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
+            {isLoadingFollowing ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !following || following.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">You're not following anyone yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {following.map((followedUser) => (
+                  <Card key={followedUser.id} className="flex items-center p-4">
+                    <Avatar className="h-10 w-10 mr-4">
+                      {followedUser.profilePicture ? (
+                        <AvatarImage src={followedUser.profilePicture} alt={followedUser.username} />
+                      ) : (
+                        <AvatarFallback>{followedUser.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {followedUser.firstName && followedUser.lastName 
+                          ? `${followedUser.firstName} ${followedUser.lastName}`
+                          : followedUser.username}
+                      </p>
+                      <p className="text-sm text-muted-foreground">@{followedUser.username}</p>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

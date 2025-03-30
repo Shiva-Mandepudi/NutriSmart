@@ -5,7 +5,12 @@ import { setupAuth } from "./auth";
 import { 
   insertMealSchema, 
   insertWaterIntakeSchema, 
-  insertAppointmentSchema
+  insertAppointmentSchema,
+  insertSocialPostSchema,
+  insertPostCommentSchema,
+  insertChallengeSchema,
+  insertChallengeParticipantSchema,
+  insertCommunityRecipeSchema
 } from "@shared/schema";
 import { generateMealPlan, analyzeFood, answerNutritionQuestion } from "./lib/openai";
 
@@ -404,6 +409,465 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const answer = await answerNutritionQuestion(question);
       res.json({ answer });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // -------------------- COMMUNITY FEATURES --------------------
+  
+  // Social Posts
+  app.get("/api/social/posts", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const posts = await storage.getAllSocialPosts();
+      res.json(posts);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/posts", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const validatedData = insertSocialPostSchema.parse(req.body);
+      const post = await storage.createSocialPost({
+        ...validatedData,
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likesCount: 0,
+        commentsCount: 0,
+        isVisible: true
+      });
+      
+      res.status(201).json(post);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/posts/:id/like", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const postId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Check if user already liked this post
+      const existingLike = await storage.getPostLike(postId, userId);
+      
+      if (existingLike) {
+        // Unlike - remove the like
+        await storage.removePostLike(postId, userId);
+        res.json({ liked: false });
+      } else {
+        // Like - add the like
+        await storage.addPostLike(postId, userId);
+        res.json({ liked: true });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/social/posts/:id/comments", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const postId = parseInt(req.params.id);
+      const comments = await storage.getCommentsByPostId(postId);
+      res.json(comments);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/posts/:id/comments", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const postId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const validatedData = insertPostCommentSchema.parse(req.body);
+      const comment = await storage.createPostComment({
+        ...validatedData,
+        userId,
+        postId,
+        createdAt: new Date(),
+        likesCount: 0
+      });
+      
+      res.status(201).json(comment);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/comments/:id/like", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const commentId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Check if user already liked this comment
+      const existingLike = await storage.getCommentLike(commentId, userId);
+      
+      if (existingLike) {
+        // Unlike - remove the like
+        await storage.removeCommentLike(commentId, userId);
+        res.json({ liked: false });
+      } else {
+        // Like - add the like
+        await storage.addCommentLike(commentId, userId);
+        res.json({ liked: true });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Challenges
+  app.get("/api/social/challenges", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const challenges = await storage.getAllChallenges();
+      res.json(challenges);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/social/challenges/active", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const challenges = await storage.getActiveChallenges();
+      res.json(challenges);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/social/challenges/:id", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const challengeId = parseInt(req.params.id);
+      const challenge = await storage.getChallengeById(challengeId);
+      
+      if (!challenge) {
+        return res.status(404).json({ message: "Challenge not found" });
+      }
+      
+      res.json(challenge);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/challenges/:id/join", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const challengeId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Check if user already joined this challenge
+      const existingParticipant = await storage.getChallengeParticipant(challengeId, userId);
+      
+      if (existingParticipant) {
+        return res.status(400).json({ message: "Already joined this challenge" });
+      }
+      
+      const participant = await storage.addChallengeParticipant({
+        userId,
+        challengeId,
+        joinedAt: new Date(),
+        progress: 0,
+        isCompleted: false
+      });
+      
+      res.status(201).json(participant);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Community Recipes
+  app.get("/api/social/recipes", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const recipes = await storage.getAllCommunityRecipes();
+      res.json(recipes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/recipes", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const validatedData = insertCommunityRecipeSchema.parse(req.body);
+      
+      // Process ingredients array safely
+      let ingredientsArray: string[] = [];
+      if (req.body.ingredients && Array.isArray(req.body.ingredients)) {
+        ingredientsArray = req.body.ingredients
+          .filter((item: any) => item !== null && item !== undefined)
+          .map((item: any) => String(item));
+      }
+      
+      // Process instructions array safely
+      let instructionsArray: string[] = [];
+      if (req.body.instructions && Array.isArray(req.body.instructions)) {
+        instructionsArray = req.body.instructions
+          .filter((item: any) => item !== null && item !== undefined)
+          .map((item: any) => String(item));
+      }
+      
+      const recipe = await storage.createCommunityRecipe({
+        ...validatedData,
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ingredients: ingredientsArray,
+        instructions: instructionsArray,
+        isPublic: true
+      });
+      
+      res.status(201).json(recipe);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/recipes/:id/favorite", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const recipeId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Check if recipe is already favorited
+      const existingFavorite = await storage.getRecipeFavorite(recipeId, userId);
+      
+      if (existingFavorite) {
+        // Unfavorite
+        await storage.removeRecipeFavorite(recipeId, userId);
+        res.json({ favorited: false });
+      } else {
+        // Favorite
+        await storage.addRecipeFavorite(recipeId, userId);
+        res.json({ favorited: true });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/recipes/:id/rate", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = req.user?.id;
+      const recipeId = parseInt(req.params.id);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const { rating, comment } = req.body;
+      
+      if (!rating || typeof rating !== 'number' || rating < 1 || rating > 5) {
+        return res.status(400).json({ message: "Invalid rating (must be 1-5)" });
+      }
+      
+      // Check if user already rated this recipe
+      const existingRating = await storage.getRecipeRating(recipeId, userId);
+      
+      if (existingRating) {
+        // Update existing rating
+        const updatedRating = await storage.updateRecipeRating(existingRating.id, {
+          rating,
+          comment: comment || null
+        });
+        res.json(updatedRating);
+      } else {
+        // Create new rating
+        const newRating = await storage.createRecipeRating({
+          userId,
+          recipeId,
+          rating,
+          comment: comment || null,
+          createdAt: new Date()
+        });
+        res.json(newRating);
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // User Followers
+  app.get("/api/social/users", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const users = await storage.getAllUsers();
+      // Remove sensitive information
+      const sanitizedUsers = users.map(user => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName || user.username
+      }));
+      res.json(sanitizedUsers);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/social/users/:id/follow", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const currentUserId = req.user?.id;
+      const targetUserId = parseInt(req.params.id);
+      
+      if (!currentUserId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      if (currentUserId === targetUserId) {
+        return res.status(400).json({ message: "Cannot follow yourself" });
+      }
+      
+      // Check if already following
+      const existingFollow = await storage.getUserFollower(targetUserId, currentUserId);
+      
+      if (existingFollow) {
+        // Unfollow
+        await storage.removeUserFollower(targetUserId, currentUserId);
+        res.json({ following: false });
+      } else {
+        // Follow
+        await storage.addUserFollower(targetUserId, currentUserId);
+        res.json({ following: true });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/social/users/:id/followers", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = parseInt(req.params.id);
+      const followers = await storage.getUserFollowers(userId);
+      res.json(followers);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/social/users/:id/following", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const userId = parseInt(req.params.id);
+      const following = await storage.getUserFollowing(userId);
+      res.json(following);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  // Follow/unfollow a user
+  app.post("/api/social/users/:id/follow", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const currentUserId = req.user?.id;
+      const targetUserId = parseInt(req.params.id);
+      
+      if (!currentUserId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Cannot follow yourself
+      if (currentUserId === targetUserId) {
+        return res.status(400).json({ message: "Cannot follow yourself" });
+      }
+      
+      // Check if already following
+      const isFollowing = await storage.isUserFollowing(currentUserId, targetUserId);
+      
+      if (isFollowing) {
+        // Unfollow
+        await storage.unfollowUser(currentUserId, targetUserId);
+        return res.json({ following: false });
+      } else {
+        // Follow
+        await storage.followUser(currentUserId, targetUserId);
+        return res.json({ following: true });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  // Check if currently following a user
+  app.get("/api/social/users/:id/is-following", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const currentUserId = req.user?.id;
+      const targetUserId = parseInt(req.params.id);
+      
+      if (!currentUserId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const isFollowing = await storage.isUserFollowing(currentUserId, targetUserId);
+      return res.json({ following: isFollowing });
     } catch (error) {
       next(error);
     }
