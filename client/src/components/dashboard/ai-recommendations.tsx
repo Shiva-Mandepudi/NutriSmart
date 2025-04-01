@@ -87,7 +87,7 @@ export function AIRecommendations() {
         </div>
         
         <div className="flex flex-wrap gap-3">
-          <Link href="/meal-plans" className="py-2 px-4 bg-white text-primary-600 rounded-full font-medium shadow-lg hover:shadow-xl transition">
+          <Link href="/meal-plans" className="py-2 px-4 bg-blue text-primary-600 rounded-full font-medium shadow-lg hover:shadow-xl transition">
             View Meal Plans
           </Link>
           {!isUserPremium && (
